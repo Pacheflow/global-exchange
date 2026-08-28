@@ -14,6 +14,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+KEYCLOAK_SERVER_URL = os.getenv(
+    "KEYCLOAK_SERVER_URL",
+    "http://localhost:8080",
+)
+
+KEYCLOAK_REALM = os.getenv(
+    "KEYCLOAK_REALM",
+    "global-exchange",
+)
+
+KEYCLOAK_CLIENT_ID = os.getenv(
+    "KEYCLOAK_CLIENT_ID",
+    "global-exchange-web",
+)
+
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -35,12 +50,13 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "usuarios",
 ]
 
 MIDDLEWARE = [
