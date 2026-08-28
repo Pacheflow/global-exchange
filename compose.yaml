@@ -1,0 +1,16 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.2
+    container_name: global-exchange-keycloak
+
+    command: start-dev --import-realm
+
+    ports:
+      - "127.0.0.1:8080:8080"
+
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import
