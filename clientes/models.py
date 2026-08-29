@@ -2,6 +2,8 @@ from django.db import models
 
 
 class CategoriaCliente(models.Model):
+    """Representa una categoría comercial asignable a los clientes."""
+
     nombre = models.CharField(max_length=50, unique=True)
     descripcion = models.TextField(blank=True)
 
@@ -10,6 +12,12 @@ class CategoriaCliente(models.Model):
 
 
 class Cliente(models.Model):
+    """Representa un cliente de Global Exchange.
+
+    Guarda información como tipo de persona, documento,
+    estado y categoría comercial.
+    """
+
     TIPOS_PERSONA = [
         ('FISICA', 'Persona Física'),
         ('JURIDICA', 'Persona Jurídica'),
@@ -51,9 +59,11 @@ class Cliente(models.Model):
         return self.nombre_razon_social
 
     def activar(self):
+        """Cambia el estado del cliente a ACTIVO."""
         self.estado = 'ACTIVO'
         self.save()
 
     def dar_de_baja(self):
+        """Cambia el estado del cliente a INACTIVO sin eliminarlo."""
         self.estado = 'INACTIVO'
         self.save()
