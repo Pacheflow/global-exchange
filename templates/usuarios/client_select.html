@@ -1,0 +1,50 @@
+{% extends 'usuarios/base.html' %}{% block title %}Seleccionar cliente · Global
+Exchange{% endblock %}{% block content %}
+<section class="form-page">
+  <a class="back" href="{% url 'usuarios:dashboard' %}">← Volver al panel</a>
+  <div class="form-card card">
+    <span class="eyebrow"><i></i> CONTEXTO DE TRABAJO</span>
+    <h1>
+      {% if request.session.selected_client %}Cambiar cliente{% else
+      %}Seleccionar cliente{% endif %}
+    </h1>
+    <p>Solo podés acceder a clientes asociados a tu identidad.</p>
+    {% if clients %}
+    <form method="post">
+      {% csrf_token %}
+      <div class="client-list">
+        {% for client in clients %}<label
+          ><input
+            type="radio"
+            name="cliente"
+            value="{{ client.id }}"
+            {%
+            if
+            request.session.selected_client.id=""
+            ="client.id"
+            %}checked{%
+            endif
+            %}
+            required
+          /><span
+            ><i>▣</i><b>{{ client.name }}</b
+            ><small>ID: {{ client.id }}</small></span
+          ></label
+        >{% endfor %}
+      </div>
+      <button class="btn primary full">Usar este cliente</button>
+    </form>
+    {% else %}
+    <div class="empty">
+      <i>◇</i>
+      <h2>Sin clientes asociados</h2>
+      <p>
+        La interfaz está lista. Cuando el módulo de clientes asigne IDs al
+        atributo <code>clientes</code> del usuario en Keycloak, aparecerán aquí
+        automáticamente.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

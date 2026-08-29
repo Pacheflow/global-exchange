@@ -736,6 +736,24 @@
       "publicClient": true,
       "frontchannelLogout": true,
       "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "clientes asociados",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "aggregate.attrs": "false",
+            "userinfo.token.claim": "true",
+            "multivalued": "true",
+            "user.attribute": "clientes",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "clientes",
+            "jsonType.label": "String"
+          }
+        }
+      ],
       "attributes": {
         "realm_client": "false",
         "logout.confirmation.enabled": "false",

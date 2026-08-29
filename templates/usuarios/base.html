@@ -1,0 +1,56 @@
+{% load static %}<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{% block title %}Global Exchange{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/app.css' %}" />
+  </head>
+  <body>
+    <header class="navbar">
+      <a
+        class="brand"
+        href="{% url 'usuarios:home' %}"
+        aria-label="Global Exchange inicio"
+        ><span class="brand-mark">◆</span><span>GLOBAL <b>EXCHANGE</b></span></a
+      >
+      <button class="menu-toggle" data-menu aria-label="Abrir menú">☰</button>
+      <nav class="nav-links" id="main-menu">
+        <a href="{% url 'usuarios:home' %}">Mercado</a>{% if
+        request.session.kc_user %}<a href="{% url 'usuarios:dashboard' %}"
+          >Panel</a
+        ><a href="{% url 'usuarios:list' %}">Usuarios</a
+        ><a href="{% url 'usuarios:clients' %}">Clientes</a>{% endif %}
+      </nav>
+      <div class="nav-actions">
+        {% if request.session.selected_client %}<a
+          class="context"
+          href="{% url 'usuarios:clients' %}"
+          ><small>Cliente activo</small
+          ><strong>{{ request.session.selected_client.name }}</strong></a
+        >{% endif %}{% if request.session.kc_user %}<span class="avatar"
+          >{{ request.session.kc_user.preferred_username|first|upper }}</span
+        ><a class="btn ghost" href="{% url 'usuarios:logout' %}">Salir</a>{%
+        else %}<a class="btn ghost" href="{% url 'usuarios:login' %}"
+          >Iniciar sesión</a
+        ><a class="btn primary" href="{% url 'usuarios:registro' %}"
+          >Registrarse</a
+        >{% endif %}
+      </div>
+    </header>
+    {% if messages %}
+    <div class="messages">
+      {% for message in messages %}
+      <div class="message {{ message.tags }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <main>{% block content %}{% endblock %}</main>
+    <footer>
+      <span class="brand mini"
+        ><span class="brand-mark">◆</span> GLOBAL EXCHANGE</span
+      ><span>Operaciones simples. Decisiones claras.</span><span>© 2026</span>
+    </footer>
+    <script src="{% static 'js/app.js' %}"></script>
+  </body>
+</html>

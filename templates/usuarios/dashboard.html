@@ -1,0 +1,58 @@
+{% extends 'usuarios/base.html' %}{% block title %}Panel · Global Exchange{%
+endblock %}{% block content %}
+<section class="page">
+  <div class="page-title">
+    <div>
+      <span class="eyebrow"><i></i> SESIÓN PROTEGIDA POR KEYCLOAK</span>
+      <h1>
+        Hola, {{
+        request.session.kc_user.given_name|default:request.session.kc_user.preferred_username
+        }}
+      </h1>
+      <p>Este es tu centro de operaciones de Global Exchange.</p>
+    </div>
+    <a class="btn primary" href="{% url 'usuarios:clients' %}"
+      >{% if request.session.selected_client %}Cambiar cliente{% else
+      %}Seleccionar cliente{% endif %}</a
+    >
+  </div>
+  <div class="stats">
+    <article class="card">
+      <span>Cliente activo</span
+      ><strong
+        >{% if request.session.selected_client %}{{
+        request.session.selected_client.name }}{% else %}Sin seleccionar{% endif
+        %}</strong
+      ><small>El contexto controla los datos disponibles</small>
+    </article>
+    <article class="card">
+      <span>Identidad</span
+      ><strong
+        >{{
+        request.session.kc_user.email|default:request.session.kc_user.preferred_username
+        }}</strong
+      ><small>Autenticada por OpenID Connect</small>
+    </article>
+    <article class="card">
+      <span>Estado</span><strong class="positive">● Sesión activa</strong
+      ><small>Las credenciales no pasan por Django</small>
+    </article>
+  </div>
+  <h2 class="section-title">Accesos rápidos</h2>
+  <div class="quick-grid">
+    <a class="quick card" href="{% url 'usuarios:list' %}"
+      ><i>♙</i>
+      <div>
+        <b>Gestión de usuarios</b><span>Crear, editar y dar de baja</span>
+      </div>
+      <b>→</b></a
+    ><a class="quick card" href="{% url 'usuarios:clients' %}"
+      ><i>▣</i>
+      <div>
+        <b>Contexto de cliente</b><span>Seleccionar o cambiar cliente</span>
+      </div>
+      <b>→</b></a
+    >
+  </div>
+</section>
+{% endblock %}

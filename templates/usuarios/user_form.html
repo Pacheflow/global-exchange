@@ -1,0 +1,66 @@
+{% extends 'usuarios/base.html' %}{% block title %}{% if mode == 'create'
+%}Nuevo{% else %}Editar{% endif %} usuario · Global Exchange{% endblock %}{%
+block content %}
+<section class="form-page">
+  <a class="back" href="{% url 'usuarios:list' %}">← Volver a usuarios</a>
+  <div class="form-card card">
+    <span class="eyebrow"><i></i> CUENTA KEYCLOAK</span>
+    <h1>
+      {% if mode == 'create' %}Crear usuario{% else %}Editar usuario{% endif %}
+    </h1>
+    <p>
+      {% if mode == 'create' %}La contraseña inicial será temporal para proteger
+      la cuenta.{% else %}Actualizá solo los datos permitidos.{% endif %}
+    </p>
+    <form method="post">
+      {% csrf_token %}
+      <div class="form-grid">
+        {% if mode == 'create' %}<label
+          >Nombre de usuario<input
+            name="username"
+            required
+            autocomplete="off"
+            value="{{ request.POST.username }}" /></label
+        >{% endif %}<label
+          >Email<input
+            type="email"
+            name="email"
+            required
+            value="{{ managed_user.email|default:request.POST.email }}" /></label
+        ><label
+          >Nombre<input
+            name="first_name"
+            value="{{ managed_user.firstName|default:request.POST.first_name }}" /></label
+        ><label
+          >Apellido<input
+            name="last_name"
+            value="{{ managed_user.lastName|default:request.POST.last_name }}" /></label
+        >{% if mode == 'create' %}<label class="wide"
+          >Contraseña temporal<input
+            type="password"
+            name="password"
+            minlength="8"
+            required
+            autocomplete="new-password"
+          /><small>Mínimo 8 caracteres</small></label
+        >{% else %}<label class="toggle wide"
+          ><input
+            type="checkbox"
+            name="enabled"
+            {%
+            if
+            managed_user.enabled
+            %}checked{%
+            endif
+            %}
+          /><span></span> Usuario habilitado</label
+        >{% endif %}
+      </div>
+      <div class="form-actions">
+        <a class="btn ghost" href="{% url 'usuarios:list' %}">Cancelar</a
+        ><button class="btn primary">Guardar usuario</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
