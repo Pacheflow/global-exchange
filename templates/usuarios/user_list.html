@@ -1,5 +1,4 @@
-{% extends 'usuarios/base.html' %}{% block title %}Usuarios · Global Exchange{%
-endblock %}{% block content %}
+{% extends 'usuarios/base.html' %}{% block title %}Usuarios · Global Exchange{% endblock %}{% block content %}
 <section class="page">
   <div class="page-title">
     <div>
@@ -46,8 +45,7 @@ endblock %}{% block content %}
             >
           </td>
           <td class="actions">
-            <a href="{% url 'usuarios:edit' user.id %}">Editar</a>{% if
-            user.enabled %}
+            <a href="{% url 'usuarios:edit' user.id %}">Editar</a>{% if user.enabled %}
             <form
               method="post"
               action="{% url 'usuarios:disable' user.id %}"

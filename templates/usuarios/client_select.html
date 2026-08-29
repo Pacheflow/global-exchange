@@ -5,8 +5,7 @@ Exchange{% endblock %}{% block content %}
   <div class="form-card card">
     <span class="eyebrow"><i></i> CONTEXTO DE TRABAJO</span>
     <h1>
-      {% if request.session.selected_client %}Cambiar cliente{% else
-      %}Seleccionar cliente{% endif %}
+      {% if request.session.selected_client %}Cambiar cliente{% else %}Seleccionar cliente{% endif %}
     </h1>
     <p>Solo podés acceder a clientes asociados a tu identidad.</p>
     {% if clients %}
@@ -18,13 +17,7 @@ Exchange{% endblock %}{% block content %}
             type="radio"
             name="cliente"
             value="{{ client.id }}"
-            {%
-            if
-            request.session.selected_client.id=""
-            ="client.id"
-            %}checked{%
-            endif
-            %}
+            {% if request.session.selected_client.id == client.id %}checked{% endif %}
             required
           /><span
             ><i>▣</i><b>{{ client.name }}</b

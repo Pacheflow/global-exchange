@@ -1,6 +1,4 @@
-{% extends 'usuarios/base.html' %}{% block title %}{% if mode == 'create'
-%}Nuevo{% else %}Editar{% endif %} usuario · Global Exchange{% endblock %}{%
-block content %}
+{% extends 'usuarios/base.html' %}{% block title %}{% if mode == 'create' %}Nuevo{% else %}Editar{% endif %} usuario · Global Exchange{% endblock %}{% block content %}
 <section class="form-page">
   <a class="back" href="{% url 'usuarios:list' %}">← Volver a usuarios</a>
   <div class="form-card card">
@@ -47,12 +45,7 @@ block content %}
           ><input
             type="checkbox"
             name="enabled"
-            {%
-            if
-            managed_user.enabled
-            %}checked{%
-            endif
-            %}
+            {% if managed_user.enabled %}checked{% endif %}
           /><span></span> Usuario habilitado</label
         >{% endif %}
       </div>

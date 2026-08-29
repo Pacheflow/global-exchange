@@ -1,5 +1,4 @@
-{% extends 'usuarios/base.html' %}{% block title %}Panel · Global Exchange{%
-endblock %}{% block content %}
+{% extends 'usuarios/base.html' %}{% block title %}Panel · Global Exchange{% endblock %}{% block content %}
 <section class="page">
   <div class="page-title">
     <div>
@@ -12,8 +11,7 @@ endblock %}{% block content %}
       <p>Este es tu centro de operaciones de Global Exchange.</p>
     </div>
     <a class="btn primary" href="{% url 'usuarios:clients' %}"
-      >{% if request.session.selected_client %}Cambiar cliente{% else
-      %}Seleccionar cliente{% endif %}</a
+      >{% if request.session.selected_client %}Cambiar cliente{% else %}Seleccionar cliente{% endif %}</a
     >
   </div>
   <div class="stats">
@@ -21,8 +19,7 @@ endblock %}{% block content %}
       <span>Cliente activo</span
       ><strong
         >{% if request.session.selected_client %}{{
-        request.session.selected_client.name }}{% else %}Sin seleccionar{% endif
-        %}</strong
+        request.session.selected_client.name }}{% else %}Sin seleccionar{% endif %}</strong
       ><small>El contexto controla los datos disponibles</small>
     </article>
     <article class="card">

@@ -16,8 +16,7 @@
       >
       <button class="menu-toggle" data-menu aria-label="Abrir menú">☰</button>
       <nav class="nav-links" id="main-menu">
-        <a href="{% url 'usuarios:home' %}">Mercado</a>{% if
-        request.session.kc_user %}<a href="{% url 'usuarios:dashboard' %}"
+        <a href="{% url 'usuarios:home' %}">Mercado</a>{% if request.session.kc_user %}<a href="{% url 'usuarios:dashboard' %}"
           >Panel</a
         ><a href="{% url 'usuarios:list' %}">Usuarios</a
         ><a href="{% url 'usuarios:clients' %}">Clientes</a>{% endif %}
@@ -30,8 +29,7 @@
           ><strong>{{ request.session.selected_client.name }}</strong></a
         >{% endif %}{% if request.session.kc_user %}<span class="avatar"
           >{{ request.session.kc_user.preferred_username|first|upper }}</span
-        ><a class="btn ghost" href="{% url 'usuarios:logout' %}">Salir</a>{%
-        else %}<a class="btn ghost" href="{% url 'usuarios:login' %}"
+        ><a class="btn ghost" href="{% url 'usuarios:logout' %}">Salir</a>{% else %}<a class="btn ghost" href="{% url 'usuarios:login' %}"
           >Iniciar sesión</a
         ><a class="btn primary" href="{% url 'usuarios:registro' %}"
           >Registrarse</a

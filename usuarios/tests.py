@@ -1,10 +1,9 @@
 from unittest.mock import patch
 
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.urls import reverse
 
 
-@override_settings(SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies")
 class AuthenticationFlowTests(TestCase):
     def test_login_redirects_to_keycloak_with_state(self):
         response = self.client.get(reverse("usuarios:login"))
@@ -34,7 +33,6 @@ class AuthenticationFlowTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
 
-@override_settings(SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies")
 class ClientContextTests(TestCase):
     def setUp(self):
         session = self.client.session
