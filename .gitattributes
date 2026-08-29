@@ -1,1 +1,1 @@
-git ls-files --eol docker/entrypoint.sh
+*.sh text eol=lf
