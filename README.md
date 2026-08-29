@@ -8,31 +8,39 @@ No es necesario instalar Python ni PostgreSQL en la computadora. El entorno incl
 - PostgreSQL 17 con almacenamiento persistente.
 - Keycloak 26.7.2 conectado a PostgreSQL.
 - Instalación automática de dependencias Python.
-- Espera de disponibilidad y migraciones automáticas de Django.
+- Migraciones automáticas de Django.
 - Importación automática del realm de Keycloak durante el primer inicio.
 
-### Inicio rápido
+## Inicio rápido
 
 1. Instalar e iniciar Docker Desktop.
 2. Opcionalmente, copiar `.env.example` como `.env` y cambiar las contraseñas.
 3. Desde la raíz del repositorio ejecutar:
 
-   ```powershell
-   docker compose up --build -d
-   ```
+```powershell
+docker compose up --build -d
+```
 
 4. Consultar el estado:
 
-   ```powershell
-   docker compose ps
-   docker compose logs -f web
-   ```
+```powershell
+docker compose ps
+docker compose logs -f web
+```
 
-La aplicación queda en `http://localhost:8000` y Keycloak en
-`http://localhost:8080`. PostgreSQL permanece aislado en la red interna de Docker
-y no necesita ocupar el puerto `5432` de Windows.
+La aplicación queda disponible en:
 
-Para ejecutar comandos Django no se usa el Python de Windows:
+```
+http://localhost:8000
+```
+
+y Keycloak en:
+
+```
+http://localhost:8080
+```
+
+Para ejecutar comandos Django:
 
 ```powershell
 docker compose exec web python manage.py migrate
@@ -46,5 +54,76 @@ Para detener los contenedores conservando los datos:
 docker compose down
 ```
 
-Los datos solo se eliminan si se solicita expresamente con
-`docker compose down --volumes`.
+Los datos solo se eliminan si se solicita expresamente:
+
+```powershell
+docker compose down --volumes
+```
+
+---
+
+# Autenticación y usuarios
+
+## HU-01 - Registro de usuario
+
+### Descripción
+
+El registro de usuarios se realiza mediante Keycloak como proveedor externo de identidad.
+
+La aplicación Django no crea usuarios directamente, sino que redirige al usuario hacia el formulario de registro administrado por Keycloak.
+
+### Flujo de registro
+
+1. El usuario accede a la opción de registro desde la aplicación.
+2. Django genera la URL de registro de Keycloak.
+3. El usuario completa sus datos en Keycloak.
+4. Keycloak procesa la creación del usuario.
+5. El usuario queda registrado en el Realm configurado.
+
+### Configuración utilizada
+
+- Proveedor de identidad: Keycloak.
+- Realm: `global-exchange`.
+- Cliente: `global-exchange-web`.
+- Flujo utilizado: OpenID Connect Authorization Code Flow.
+
+### Implementación
+
+La lógica del registro se encuentra en:
+
+```
+usuarios/views.py
+```
+
+La función `registro()` genera la URL de registro de Keycloak utilizando la configuración definida en Django.
+
+### Pruebas realizadas
+
+Se implementaron pruebas automáticas para verificar:
+
+- Existencia de la ruta de registro.
+- Redirección hacia Keycloak.
+- Uso del endpoint correcto.
+- Uso del cliente configurado.
+- Parámetros necesarios del flujo OpenID Connect.
+
+Resultado:
+
+**7 tests ejecutados correctamente.**
+
+---
+
+## Evidencias
+
+### HU-01
+
+Las evidencias de la prueba manual del registro se encuentran en:
+
+```
+docs/evidencias/HU-01/
+```
+
+Incluyen:
+
+- Registro mediante Keycloak.
+- Usuario creado correctamente.
