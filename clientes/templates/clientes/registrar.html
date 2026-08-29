@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Registrar Cliente</title>
+</head>
+<body>
+
+    <h1>Registrar Cliente</h1>
+
+    <form method="POST">
+        {% csrf_token %}
+
+        {{ form.as_p }}
+
+        <button type="submit">Guardar Cliente</button>
+    </form>
+
+    <br>
+
+    <a href="/clientes/">Volver</a>
+
+</body>
+</html>
