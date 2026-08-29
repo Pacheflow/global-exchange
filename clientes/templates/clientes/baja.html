@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Dar de Baja Cliente</title>
+</head>
+<body>
+
+    <h1>Dar de Baja Cliente</h1>
+
+    {% if cliente_no_encontrado %}
+
+        <p>Cliente no encontrado.</p>
+
+    {% else %}
+
+        <p>
+            ¿Está seguro de que desea dar de baja al cliente
+            <strong>{{ cliente.nombre_razon_social }}</strong>?
+        </p>
+
+        <p>Estado actual: {{ cliente.estado }}</p>
+
+        <form method="POST">
+            {% csrf_token %}
+
+            <button type="submit">Confirmar Baja</button>
+        </form>
+
+    {% endif %}
+
+    <br>
+
+    <a href="{% url 'consultar_clientes' %}">
+        Cancelar / Volver
+    </a>
+
+</body>
+</html>

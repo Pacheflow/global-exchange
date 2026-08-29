@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Segmentar Cliente</title>
+</head>
+<body>
+
+    <h1>Segmentar Cliente</h1>
+
+    {% if cliente_no_encontrado %}
+
+        <p>Cliente no encontrado.</p>
+
+    {% else %}
+
+        <p>
+            Cliente:
+            <strong>{{ cliente.nombre_razon_social }}</strong>
+        </p>
+
+        <p>
+            Categoría actual:
+            {% if cliente.categoria %}
+                {{ cliente.categoria.nombre }}
+            {% else %}
+                Sin categoría
+            {% endif %}
+        </p>
+
+        <form method="POST">
+            {% csrf_token %}
+
+            {{ form.as_p }}
+
+            <button type="submit">Guardar Categoría</button>
+        </form>
+
+    {% endif %}
+
+    <br>
+
+    <a href="{% url 'consultar_clientes' %}">
+        Volver
+    </a>
+
+</body>
+</html>

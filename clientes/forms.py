@@ -19,3 +19,18 @@ class ClienteForm(forms.ModelForm):
             "tipo_persona": "Tipo de persona",
             "documento": "Documento",
         }
+
+
+class SegmentacionClienteForm(forms.ModelForm):
+    """Formulario utilizado para asignar una categoría a un cliente."""
+
+    class Meta:
+        model = Cliente
+
+        fields = [
+            "categoria",
+        ]
+
+        labels = {
+            "categoria": "Categoría del cliente",
+        }
