@@ -212,3 +212,13 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+
+KEYCLOAK_ADMIN_CLIENT_ID = os.getenv(
+    "KEYCLOAK_ADMIN_CLIENT_ID",
+    "global-exchange-admin",
+)
+
+KEYCLOAK_ADMIN_CLIENT_SECRET = os.getenv(
+    "KEYCLOAK_ADMIN_CLIENT_SECRET",
+)

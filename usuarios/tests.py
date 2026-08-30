@@ -526,3 +526,78 @@ class ConfiguracionRealmTests(TestCase):
             password_config["config"]["always_set_password_on_register_form"],
             "true",
         )
+
+class AsignarRolTests(TestCase):
+    def _autenticar_como(self, roles):
+        session = self.client.session
+        session[SESSION_AUTENTICADO] = True
+        session[SESSION_USUARIO] = {
+            "sub": "admin-prueba",
+            "username": "admin",
+            "email": "admin@prueba.com",
+        }
+        session[SESSION_ROLES] = roles
+        session[SESSION_EXPIRA_EN] = time.time() + 3600
+        session.save()
+
+    def test_requiere_autenticacion(self):
+        response = self.client.post(
+            reverse("usuarios:asignar_rol"),
+            data={
+                "usuario_id": "usuario-1",
+                "rol": "CAJERO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_requiere_rol_administrador(self):
+        self._autenticar_como(["USUARIO"])
+
+        response = self.client.post(
+            reverse("usuarios:asignar_rol"),
+            data={
+                "usuario_id": "usuario-1",
+                "rol": "CAJERO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    @patch("usuarios.views.asignar_rol_usuario")
+    def test_administrador_puede_asignar_rol(self, mock_asignar):
+        self._autenticar_como(["ADMINISTRADOR"])
+
+        response = self.client.post(
+            reverse("usuarios:asignar_rol"),
+            data={
+                "usuario_id": "usuario-1",
+                "rol": "CAJERO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_asignar.assert_called_once_with("usuario-1", "CAJERO")
+
+    @patch("usuarios.views.asignar_rol_usuario")
+    def test_no_permite_rol_duplicado(self, mock_asignar):
+        self._autenticar_como(["ADMINISTRADOR"])
+        mock_asignar.side_effect = ValueError("El usuario ya posee ese rol.")
+
+        response = self.client.post(
+            reverse("usuarios:asignar_rol"),
+            data={
+                "usuario_id": "usuario-1",
+                "rol": "CAJERO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["error"],
+            "El usuario ya posee ese rol.",
+        )

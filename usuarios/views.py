@@ -2,6 +2,7 @@ import base64
 import hashlib
 import secrets
 import time
+import json
 from urllib.parse import urlencode
 
 import requests
@@ -10,7 +11,8 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from jwt.exceptions import InvalidTokenError
-
+from django.views.decorators.http import require_POST
+from .services.keycloak import asignar_rol_usuario
 from .decorators import requiere_autenticacion, requiere_rol, requiere_roles_web
 from .keycloak import (
     ROLES_NEGOCIO,
@@ -384,3 +386,48 @@ def baja_usuario(request, user_id):
 @requiere_roles_web("ADMINISTRADOR", "CAJERO", "ANALISTA_CAMBIARIO", "USUARIO")
 def clientes(request):
     return redirect("consultar_clientes")
+
+
+@require_POST
+@requiere_rol("ADMINISTRADOR")
+def asignar_rol(request):
+    """Asigna un rol de sistema a un usuario existente en Keycloak."""
+
+    try:
+        datos = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"error": "El cuerpo de la solicitud no contiene JSON válido."},
+            status=400,
+        )
+
+    usuario_id = datos.get("usuario_id")
+    rol = datos.get("rol")
+
+    if not usuario_id or not rol:
+        return JsonResponse(
+            {"error": "Los campos usuario_id y rol son obligatorios."},
+            status=400,
+        )
+
+    try:
+        asignar_rol_usuario(usuario_id, rol)
+    except ValueError as exc:
+        return JsonResponse(
+            {"error": str(exc)},
+            status=400,
+        )
+    except requests.RequestException:
+        return JsonResponse(
+            {"error": "No fue posible completar la operación en Keycloak."},
+            status=502,
+        )
+
+    return JsonResponse(
+        {
+            "message": "Rol asignado correctamente.",
+            "usuario_id": usuario_id,
+            "rol": rol,
+        },
+        status=200,
+    )

@@ -1,6 +1,7 @@
 from functools import lru_cache
 import time
 
+import requests
 import jwt
 from django.conf import settings
 from jwt import PyJWKClient
@@ -27,7 +28,7 @@ SESSION_ROLES = "roles"
 SESSION_EXPIRA_EN = "oidc_expires_at"
 
 ALGORITMOS_PERMITIDOS = ("RS256",)
-
+TIMEOUT_KEYCLOAK = 10
 
 def _realm_url(base_url):
     return f"{base_url.rstrip('/')}/realms/{settings.KEYCLOAK_REALM}"
@@ -171,3 +172,158 @@ def limpiar_sesion_oidc(request):
         "kc_id_token",
     ):
         request.session.pop(clave, None)
+
+
+def obtener_token_admin():
+    """Obtiene un token de servicio para consumir la Admin API de Keycloak."""
+
+    token_url = (
+        f"{_realm_url(settings.KEYCLOAK_INTERNAL_URL)}" "/protocol/openid-connect/token"
+    )
+
+    response = requests.post(
+        token_url,
+        data={
+            "grant_type": "client_credentials",
+            "client_id": settings.KEYCLOAK_ADMIN_CLIENT_ID,
+            "client_secret": settings.KEYCLOAK_ADMIN_CLIENT_SECRET,
+        },
+        timeout=TIMEOUT_KEYCLOAK,
+    )
+
+    response.raise_for_status()
+
+    access_token = response.json().get("access_token")
+
+    if not access_token:
+        raise RuntimeError("Keycloak no devolvió un access token administrativo.")
+
+    return access_token
+
+
+def buscar_usuario_keycloak(usuario_id):
+    """Obtiene un usuario existente desde la Admin API de Keycloak."""
+
+    token = obtener_token_admin()
+
+    url = (
+        f"{settings.KEYCLOAK_INTERNAL_URL.rstrip('/')}"
+        f"/admin/realms/{settings.KEYCLOAK_REALM}"
+        f"/users/{usuario_id}"
+    )
+
+    response = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=TIMEOUT_KEYCLOAK,
+    )
+
+    if response.status_code == 404:
+        return None
+
+    response.raise_for_status()
+
+    return response.json()
+
+
+def obtener_rol_keycloak(nombre_rol):
+    """Obtiene un rol de realm existente desde Keycloak."""
+
+    token = obtener_token_admin()
+
+    url = (
+        f"{settings.KEYCLOAK_INTERNAL_URL.rstrip('/')}"
+        f"/admin/realms/{settings.KEYCLOAK_REALM}"
+        f"/roles/{nombre_rol}"
+    )
+
+    response = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=TIMEOUT_KEYCLOAK,
+    )
+
+    if response.status_code == 404:
+        return None
+
+    response.raise_for_status()
+
+    return response.json()
+
+
+def obtener_roles_usuario(usuario_id):
+    """Obtiene los roles de realm asignados directamente a un usuario."""
+
+    token = obtener_token_admin()
+
+    url = (
+        f"{settings.KEYCLOAK_INTERNAL_URL.rstrip('/')}"
+        f"/admin/realms/{settings.KEYCLOAK_REALM}"
+        f"/users/{usuario_id}/role-mappings/realm"
+    )
+
+    response = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=TIMEOUT_KEYCLOAK,
+    )
+
+    if response.status_code == 404:
+        return None
+
+    response.raise_for_status()
+
+    return response.json()
+
+
+def usuario_tiene_rol(usuario_id, nombre_rol):
+    """Indica si un usuario ya posee directamente un rol de realm."""
+
+    roles = obtener_roles_usuario(usuario_id)
+
+    if roles is None:
+        return False
+
+    return any(rol.get("name") == nombre_rol for rol in roles)
+
+
+def asignar_rol_usuario(usuario_id, nombre_rol):
+    """Asigna un rol de realm a un usuario existente en Keycloak."""
+
+    usuario = buscar_usuario_keycloak(usuario_id)
+
+    if usuario is None:
+        raise ValueError("El usuario no existe.")
+
+    if nombre_rol not in ROLES_SISTEMA:
+        raise ValueError("El rol indicado no pertenece al sistema.")
+
+    rol = obtener_rol_keycloak(nombre_rol)
+
+    if rol is None:
+        raise ValueError("El rol no existe en Keycloak.")
+
+    if usuario_tiene_rol(usuario_id, nombre_rol):
+        raise ValueError("El usuario ya posee ese rol.")
+
+    token = obtener_token_admin()
+
+    url = (
+        f"{settings.KEYCLOAK_INTERNAL_URL.rstrip('/')}"
+        f"/admin/realms/{settings.KEYCLOAK_REALM}"
+        f"/users/{usuario_id}/role-mappings/realm"
+    )
+
+    response = requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        json=[rol],
+        timeout=TIMEOUT_KEYCLOAK,
+    )
+
+    response.raise_for_status()
+
+    return True
