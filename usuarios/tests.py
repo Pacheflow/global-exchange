@@ -16,6 +16,17 @@ from .services.keycloak import (
     validar_access_token,
 )
 
+from unittest.mock import patch
+
+from django.test import TestCase
+from django.urls import reverse
+
+from .services.keycloak import (
+    SESSION_AUTENTICADO,
+    SESSION_ROLES,
+    SESSION_USUARIO,
+)
+
 class RegistroUsuarioTests(TestCase):
 
     # Verifica que la ruta de registro exista
@@ -356,3 +367,78 @@ class RolesKeycloakTests(TestCase):
 
         with self.assertRaises(InvalidAudienceError):
             validar_access_token("token-de-otro-cliente")
+
+
+class AsignarRolTests(TestCase):
+    def _autenticar_como(self, roles):
+        session = self.client.session
+        session[SESSION_AUTENTICADO] = True
+        session[SESSION_USUARIO] = {
+            "sub": "admin-prueba",
+            "username": "admin",
+            "email": "admin@prueba.com",
+        }
+        session[SESSION_ROLES] = roles
+        session.save()
+
+    def test_requiere_autenticacion(self):
+        response = self.client.post(
+            reverse("usuarios:asignar_rol"),
+            data={
+                "usuario_id": "usuario-1",
+                "rol": "CAJERO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_requiere_rol_administrador(self):
+        self._autenticar_como(["USUARIO"])
+
+        response = self.client.post(
+            reverse("usuarios:asignar_rol"),
+            data={
+                "usuario_id": "usuario-1",
+                "rol": "CAJERO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    @patch("usuarios.views.asignar_rol_usuario")
+    def test_administrador_puede_asignar_rol(self, mock_asignar):
+        self._autenticar_como(["ADMINISTRADOR"])
+
+        response = self.client.post(
+            reverse("usuarios:asignar_rol"),
+            data={
+                "usuario_id": "usuario-1",
+                "rol": "CAJERO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_asignar.assert_called_once_with("usuario-1", "CAJERO")
+
+    @patch("usuarios.views.asignar_rol_usuario")
+    def test_no_permite_rol_duplicado(self, mock_asignar):
+        self._autenticar_como(["ADMINISTRADOR"])
+        mock_asignar.side_effect = ValueError("El usuario ya posee ese rol.")
+
+        response = self.client.post(
+            reverse("usuarios:asignar_rol"),
+            data={
+                "usuario_id": "usuario-1",
+                "rol": "CAJERO",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["error"],
+            "El usuario ya posee ese rol.",
+        )

@@ -14,4 +14,5 @@ urlpatterns = [
         views.acceso_administrador,
         name="acceso_administrador",
     ),
+    path("asignar-rol/", views.asignar_rol, name="asignar_rol"),
 ]

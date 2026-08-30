@@ -8,6 +8,12 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from jwt.exceptions import InvalidTokenError
+import json
+
+from django.views.decorators.http import require_POST
+
+from .decorators import requiere_rol
+from .services.keycloak import asignar_rol_usuario
 
 from .decorators import requiere_autenticacion, requiere_rol
 from .services.keycloak import (
@@ -186,4 +192,49 @@ def acceso_administrador(request):
             "message": "Acceso administrativo permitido",
             "usuario": request.session[SESSION_USUARIO],
         }
+    )
+
+
+@require_POST
+@requiere_rol("ADMINISTRADOR")
+def asignar_rol(request):
+    """Asigna un rol de sistema a un usuario existente en Keycloak."""
+
+    try:
+        datos = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"error": "El cuerpo de la solicitud no contiene JSON válido."},
+            status=400,
+        )
+
+    usuario_id = datos.get("usuario_id")
+    rol = datos.get("rol")
+
+    if not usuario_id or not rol:
+        return JsonResponse(
+            {"error": "Los campos usuario_id y rol son obligatorios."},
+            status=400,
+        )
+
+    try:
+        asignar_rol_usuario(usuario_id, rol)
+    except ValueError as exc:
+        return JsonResponse(
+            {"error": str(exc)},
+            status=400,
+        )
+    except requests.RequestException:
+        return JsonResponse(
+            {"error": "No fue posible completar la operación en Keycloak."},
+            status=502,
+        )
+
+    return JsonResponse(
+        {
+            "message": "Rol asignado correctamente.",
+            "usuario_id": usuario_id,
+            "rol": rol,
+        },
+        status=200,
     )
