@@ -67,3 +67,36 @@ class Cliente(models.Model):
         """Cambia el estado del cliente a INACTIVO sin eliminarlo."""
         self.estado = 'INACTIVO'
         self.save()
+
+
+class UsuarioCliente(models.Model):
+    """Asociación persistente entre una identidad Keycloak y un cliente."""
+
+    ROLES = [
+        ("RESPONSABLE", "Responsable"),
+        ("OPERADOR", "Operador"),
+        ("CONSULTA", "Solo consulta"),
+    ]
+
+    cliente = models.ForeignKey(
+        Cliente,
+        on_delete=models.CASCADE,
+        related_name="usuarios_asignados",
+    )
+    keycloak_user_id = models.CharField(max_length=64)
+    username = models.CharField(max_length=150)
+    rol_en_cliente = models.CharField(max_length=20, choices=ROLES, default="OPERADOR")
+    activo = models.BooleanField(default=True)
+    fecha_asignacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("cliente", "keycloak_user_id"),
+                name="cliente_usuario_keycloak_unico",
+            )
+        ]
+        ordering = ("username",)
+
+    def __str__(self):
+        return f"{self.username} · {self.cliente}"

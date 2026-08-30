@@ -1,0 +1,12 @@
+{% extends 'usuarios/base.html' %}
+{% block title %}Usuarios de {{ cliente.nombre_razon_social }} · Global Exchange{% endblock %}
+{% block content %}
+<section class="workspace"><div class="content-narrow">
+  <header class="workspace-header workspace-header-stacked"><div class="page-intro"><a class="back-link" href="{% url 'consultar_clientes' %}">← Volver a clientes</a><h1>Usuarios asignados</h1><p>Definí quiénes pueden trabajar con {{ cliente.nombre_razon_social }} y con qué alcance.</p></div></header>
+  {% if api_error %}<div class="message error inline-message">{{ api_error }}</div>{% endif %}
+  <div class="assignment-layout">
+    <div class="form-surface"><h2>Asignar usuario</h2><form class="clean-form" method="post">{% csrf_token %}{% include 'clientes/partials/form_fields.html' with form=form %}<button class="button button-dark button-block" type="submit"><span class="material-symbols" aria-hidden="true">person_add</span>Guardar asignación</button></form></div>
+    <div class="assignment-list surface"><div><h2>Accesos vigentes</h2><span>{{ asignaciones|length }}</span></div>{% for asignacion in asignaciones %}<article><span class="material-symbols" aria-hidden="true">account_circle</span><span><strong>{{ asignacion.username }}</strong><small>{{ asignacion.get_rol_en_cliente_display }}</small></span><form method="post" action="{% url 'quitar_asignacion_cliente' cliente.id asignacion.id %}" data-confirm="¿Quitar este usuario del cliente?">{% csrf_token %}<button class="table-action danger" type="submit" aria-label="Quitar asignación" title="Quitar asignación" data-tooltip="Quitar asignación"><span class="material-symbols" aria-hidden="true">person_remove</span></button></form></article>{% empty %}<p class="no-assignments">Este cliente todavía no tiene usuarios asignados.</p>{% endfor %}</div>
+  </div>
+</div></section>
+{% endblock %}

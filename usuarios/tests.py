@@ -77,6 +77,7 @@ class UserManagementViewTests(TestCase):
         session = self.client.session
         session["kc_user"] = {"preferred_username": "admin"}
         session["kc_access_token"] = "access"
+        session["roles"] = ["ADMINISTRADOR"]
         session.save()
 
     @patch("usuarios.views.admin_request")
@@ -96,3 +97,20 @@ class UserManagementViewTests(TestCase):
         self.assertContains(response, 'value="Guillermo"')
         self.assertContains(response, 'value="Benítez"')
         self.assertContains(response, 'value="guille@example.com"')
+
+    @patch("usuarios.views.actualizar_roles_usuario")
+    @patch("usuarios.views.admin_request")
+    def test_create_user_assigns_selected_business_roles(self, admin_request, update_roles):
+        admin_request.side_effect = [None, [{"id": "user-123"}]]
+
+        response = self.client.post(reverse("usuarios:create"), {
+            "username": "cajero",
+            "email": "cajero@example.com",
+            "first_name": "Caja",
+            "last_name": "Uno",
+            "password": "temporal123",
+            "roles": ["USUARIO", "CAJERO"],
+        })
+
+        self.assertRedirects(response, reverse("usuarios:list"), fetch_redirect_response=False)
+        update_roles.assert_called_once_with("user-123", ["USUARIO", "CAJERO"])

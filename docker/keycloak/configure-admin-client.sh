@@ -45,7 +45,7 @@ fi
 realm_management_uuid=$("$KCADM" get clients -r "$REALM" -q clientId=realm-management --fields id \
   | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
 
-for role in query-users view-users manage-users; do
+for role in query-users view-users manage-users view-realm; do
   "$KCADM" add-roles -r "$REALM" \
     --uusername "service-account-$CLIENT_ID" \
     --cclientid realm-management \
@@ -57,5 +57,19 @@ for role in query-users view-users manage-users; do
   "$KCADM" create "clients/$client_uuid/scope-mappings/clients/$realm_management_uuid" \
     -r "$REALM" -b "[$role_json]"
 done
+
+# Crear los roles de negocio también en realms persistidos que fueron importados
+# antes de que estos roles formaran parte del archivo de configuración.
+for business_role in USUARIO CAJERO ANALISTA_CAMBIARIO ADMINISTRADOR; do
+  if ! "$KCADM" get "roles/$business_role" -r "$REALM" >/dev/null 2>&1; then
+    "$KCADM" create roles -r "$REALM" -s name="$business_role"
+  fi
+done
+
+# Todo autorregistro recibe el rol base de negocio. La operación es idempotente
+# y también actualiza realms creados antes de incorporar esta configuración.
+"$KCADM" add-roles -r "$REALM" \
+  --rname "default-roles-$REALM" \
+  --rolename USUARIO
 
 echo "Cliente técnico de Keycloak configurado."

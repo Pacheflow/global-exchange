@@ -27,6 +27,7 @@ const materialInteractiveSelector = [
   ".swap-currencies",
   ".account-menu",
   ".profile-dropdown a",
+  ".table-action",
   ".dashboard-section-heading > a",
   ".quick-actions-grid > a",
 ].join(",");

@@ -21,7 +21,7 @@
         </a>
         <nav class="sidebar-nav" aria-label="Navegación de la aplicación">
           <a href="{% url 'usuarios:dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><i class="material-symbols" aria-hidden="true">home</i><span>Inicio</span></a>
-          <a href="{% url 'usuarios:list' %}" {% if request.resolver_match.url_name == 'list' or request.resolver_match.url_name == 'create' or request.resolver_match.url_name == 'edit' %}aria-current="page"{% endif %}><i class="material-symbols" aria-hidden="true">group</i><span>Usuarios</span></a>
+          {% if 'ADMINISTRADOR' in request.session.roles %}<a href="{% url 'usuarios:list' %}" {% if request.resolver_match.url_name == 'list' or request.resolver_match.url_name == 'create' or request.resolver_match.url_name == 'edit' %}aria-current="page"{% endif %}><i class="material-symbols" aria-hidden="true">group</i><span>Usuarios</span></a>{% endif %}
           <a href="{% url 'consultar_clientes' %}" {% if request.resolver_match.app_name == '' and 'cliente' in request.resolver_match.url_name %}aria-current="page"{% endif %}><i class="material-symbols" aria-hidden="true">business_center</i><span>Clientes</span></a>
         </nav>
         <div class="sidebar-context">

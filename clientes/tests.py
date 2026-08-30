@@ -2,7 +2,16 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .forms import ClienteForm
-from .models import CategoriaCliente, Cliente
+from unittest.mock import patch
+
+from .models import CategoriaCliente, Cliente, UsuarioCliente
+
+
+def autenticar_admin(test_case):
+    session = test_case.client.session
+    session["kc_user"] = {"sub": "admin-id", "preferred_username": "admin"}
+    session["roles"] = ["ADMINISTRADOR"]
+    session.save()
 
 
 class ClienteModelTest(TestCase):
@@ -133,6 +142,9 @@ class ClienteModelTest(TestCase):
 
 class RegistrarClienteViewTest(TestCase):
 
+    def setUp(self):
+        autenticar_admin(self)
+
     def test_mostrar_formulario_registro(self):
         response = self.client.get(
             reverse("registrar_cliente")
@@ -173,6 +185,7 @@ class RegistrarClienteViewTest(TestCase):
 class ConsultarClienteViewTest(TestCase):
 
     def setUp(self):
+        autenticar_admin(self)
         self.cliente = Cliente.objects.create(
             nombre_razon_social="Cliente Consulta",
             tipo_persona="FISICA",
@@ -224,6 +237,7 @@ class ConsultarClienteViewTest(TestCase):
 class EditarClienteViewTest(TestCase):
 
     def setUp(self):
+        autenticar_admin(self)
         self.cliente = Cliente.objects.create(
             nombre_razon_social="Cliente Original",
             tipo_persona="FISICA",
@@ -295,6 +309,7 @@ class EditarClienteViewTest(TestCase):
 class DarDeBajaClienteViewTest(TestCase):
 
     def setUp(self):
+        autenticar_admin(self)
         self.cliente = Cliente.objects.create(
             nombre_razon_social="Cliente Baja Vista",
             tipo_persona="FISICA",
@@ -331,6 +346,7 @@ class DarDeBajaClienteViewTest(TestCase):
 class SegmentarClienteViewTest(TestCase):
 
     def setUp(self):
+        autenticar_admin(self)
         self.categoria, _ = CategoriaCliente.objects.get_or_create(
             nombre="VIP",
             defaults={
@@ -396,6 +412,7 @@ class SegmentarClienteViewTest(TestCase):
 class SeleccionarClienteViewTest(TestCase):
 
     def setUp(self):
+        autenticar_admin(self)
         self.cliente = Cliente.objects.create(
             nombre_razon_social="Cliente Operativo",
             tipo_persona="JURIDICA",
@@ -425,3 +442,77 @@ class SeleccionarClienteViewTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_dejar_de_seleccionar_elimina_contexto_de_sesion(self):
+        session = self.client.session
+        session["selected_client"] = {
+            "id": self.cliente.id,
+            "name": self.cliente.nombre_razon_social,
+        }
+        session.save()
+
+        response = self.client.post(reverse("deseleccionar_cliente"))
+
+        self.assertRedirects(
+            response,
+            reverse("consultar_clientes"),
+            fetch_redirect_response=False,
+        )
+        self.assertNotIn("selected_client", self.client.session)
+
+
+class AsignacionUsuarioClienteTest(TestCase):
+
+    def setUp(self):
+        autenticar_admin(self)
+        self.cliente = Cliente.objects.create(
+            nombre_razon_social="Empresa Asignable",
+            tipo_persona="JURIDICA",
+            documento="ASIGNAR-001",
+        )
+
+    @patch("clientes.views.admin_request")
+    def test_asignar_usuario_keycloak_a_cliente(self, admin_request):
+        admin_request.return_value = [{
+            "id": "kc-user-1",
+            "username": "operador",
+            "firstName": "Ana",
+            "lastName": "Operadora",
+        }]
+
+        response = self.client.post(
+            reverse("asignaciones_cliente", args=[self.cliente.id]),
+            {"usuario": "kc-user-1", "rol_en_cliente": "OPERADOR"},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("asignaciones_cliente", args=[self.cliente.id]),
+            fetch_redirect_response=False,
+        )
+        self.assertTrue(UsuarioCliente.objects.filter(
+            cliente=self.cliente,
+            keycloak_user_id="kc-user-1",
+            rol_en_cliente="OPERADOR",
+        ).exists())
+
+    def test_usuario_autenticado_no_selecciona_cliente_sin_asignacion(self):
+        session = self.client.session
+        session["kc_user"] = {"sub": "kc-user-2", "preferred_username": "otro"}
+        session["roles"] = ["CAJERO"]
+        session.save()
+
+        response = self.client.post(reverse("seleccionar_cliente", args=[self.cliente.id]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_usuario_sin_rol_administrador_no_abre_asignaciones(self):
+        session = self.client.session
+        session["roles"] = ["CAJERO"]
+        session.save()
+
+        response = self.client.get(
+            reverse("asignaciones_cliente", args=[self.cliente.id])
+        )
+
+        self.assertEqual(response.status_code, 403)

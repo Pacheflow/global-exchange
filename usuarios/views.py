@@ -8,8 +8,18 @@ from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from .keycloak import KeycloakError, admin_request, endpoint, exchange_code, userinfo
+from .keycloak import (
+    ROLES_NEGOCIO,
+    KeycloakError,
+    actualizar_roles_usuario,
+    admin_request,
+    endpoint,
+    exchange_code,
+    roles_usuario,
+    userinfo,
+)
 from .services.keycloak import SESSION_ROLES, SESSION_USUARIO, establecer_sesion_oidc
+from .decorators import requiere_roles_web
 
 
 def _absolute(request, name):
@@ -102,7 +112,7 @@ def dashboard(request):
     return render(request, "usuarios/dashboard.html", {"display_name": display_name})
 
 
-@oidc_required
+@requiere_roles_web("ADMINISTRADOR")
 def usuarios(request):
     try:
         rows, error = admin_request("/users?max=100"), None
@@ -111,7 +121,7 @@ def usuarios(request):
     return render(request, "usuarios/user_list.html", {"users": rows, "api_error": error})
 
 
-@oidc_required
+@requiere_roles_web("ADMINISTRADOR")
 def crear_usuario(request):
     if request.method == "POST":
         password = request.POST.get("password", "")
@@ -124,6 +134,12 @@ def crear_usuario(request):
         else:
             try:
                 admin_request("/users", method="POST", payload=payload)
+                created = admin_request(f"/users?username={payload['username']}&exact=true") or []
+                if created:
+                    actualizar_roles_usuario(
+                        created[0]["id"],
+                        request.POST.getlist("roles") or ["USUARIO"],
+                    )
                 messages.success(request, "Usuario creado. Deberá cambiar su contraseña al ingresar.")
                 return redirect("usuarios:list")
             except KeycloakError as exc:
@@ -137,10 +153,12 @@ def crear_usuario(request):
     return render(request, "usuarios/user_form.html", {
         "mode": "create",
         "form_values": form_values,
+        "business_roles": ROLES_NEGOCIO,
+        "selected_roles": request.POST.getlist("roles") or ["USUARIO"],
     })
 
 
-@oidc_required
+@requiere_roles_web("ADMINISTRADOR")
 def editar_usuario(request, user_id):
     try:
         user = admin_request(f"/users/{user_id}")
@@ -148,6 +166,7 @@ def editar_usuario(request, user_id):
             user.update({"email": request.POST.get("email", "").strip(), "firstName": request.POST.get("first_name", "").strip(),
                          "lastName": request.POST.get("last_name", "").strip(), "enabled": request.POST.get("enabled") == "on"})
             admin_request(f"/users/{user_id}", method="PUT", payload=user)
+            actualizar_roles_usuario(user_id, request.POST.getlist("roles"))
             messages.success(request, "Usuario actualizado.")
             return redirect("usuarios:list")
     except KeycloakError as exc:
@@ -158,14 +177,20 @@ def editar_usuario(request, user_id):
         "last_name": user.get("lastName", ""),
         "email": user.get("email", ""),
     }
+    try:
+        selected_roles = request.POST.getlist("roles") if request.method == "POST" else roles_usuario(user_id)
+    except KeycloakError:
+        selected_roles = []
     return render(request, "usuarios/user_form.html", {
         "mode": "edit",
         "managed_user": user,
         "form_values": form_values,
+        "business_roles": ROLES_NEGOCIO,
+        "selected_roles": selected_roles,
     })
 
 
-@oidc_required
+@requiere_roles_web("ADMINISTRADOR")
 def baja_usuario(request, user_id):
     if request.method == "POST":
         try:

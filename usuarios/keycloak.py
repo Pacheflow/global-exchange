@@ -15,6 +15,8 @@ class KeycloakError(Exception):
 
 _admin_token_cache = {"access_token": None, "expires_at": 0}
 
+ROLES_NEGOCIO = ("USUARIO", "CAJERO", "ANALISTA_CAMBIARIO", "ADMINISTRADOR")
+
 
 def _error_detail(exc, fallback):
     """Extrae mensajes de error de Admin API y de OAuth/OpenID Connect."""
@@ -101,3 +103,32 @@ def admin_request(path, token=None, *, method="GET", payload=None):
         raise KeycloakError(_error_detail(exc, "No tenés permisos para administrar usuarios.")) from exc
     except URLError as exc:
         raise KeycloakError("No se pudo conectar con Keycloak.") from exc
+
+
+def roles_usuario(user_id):
+    """Lista los roles de negocio asignados directamente a un usuario."""
+
+    mappings = admin_request(f"/users/{user_id}/role-mappings/realm") or []
+    return sorted(
+        role["name"]
+        for role in mappings
+        if isinstance(role, dict) and role.get("name") in ROLES_NEGOCIO
+    )
+
+
+def actualizar_roles_usuario(user_id, nuevos_roles):
+    """Sincroniza exclusivamente los roles de negocio sin tocar roles internos."""
+
+    nuevos = set(nuevos_roles).intersection(ROLES_NEGOCIO)
+    actuales_payload = admin_request(f"/users/{user_id}/role-mappings/realm") or []
+    actuales = {role["name"]: role for role in actuales_payload if role.get("name") in ROLES_NEGOCIO}
+
+    quitar = [actuales[name] for name in actuales.keys() - nuevos]
+    agregar = []
+    for name in nuevos - actuales.keys():
+        agregar.append(admin_request(f"/roles/{name}"))
+
+    if quitar:
+        admin_request(f"/users/{user_id}/role-mappings/realm", method="DELETE", payload=quitar)
+    if agregar:
+        admin_request(f"/users/{user_id}/role-mappings/realm", method="POST", payload=agregar)

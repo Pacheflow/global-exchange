@@ -8,6 +8,7 @@
     <div class="two-columns"><c-forms.text.outlined id="first_name" name="first_name" value="{{ form_values.first_name }}">Nombre</c-forms.text.outlined><c-forms.text.outlined id="last_name" name="last_name" value="{{ form_values.last_name }}">Apellido</c-forms.text.outlined></div>
     <c-forms.text.outlined id="email" type="email" name="email" value="{{ form_values.email }}" required leading_icon="mail">Email</c-forms.text.outlined>
     {% if mode == 'create' %}<c-forms.text.outlined id="password" type="password" name="password" required leading_icon="lock" help_text="Mínimo 8 caracteres; el usuario deberá cambiarla al ingresar.">Contraseña temporal</c-forms.text.outlined>{% else %}<c-forms.checkbox id="enabled" name="enabled" :checked="managed_user.enabled">Usuario habilitado</c-forms.checkbox>{% endif %}
+    <fieldset class="role-fieldset"><legend>Roles del sistema</legend><p>Definen las funciones habilitadas para esta identidad.</p><div class="role-options">{% for role in business_roles %}<label><input type="checkbox" name="roles" value="{{ role }}" {% if role in selected_roles %}checked{% endif %}><span class="material-symbols" aria-hidden="true">badge</span><strong>{{ role }}</strong></label>{% endfor %}</div></fieldset>
     <div class="form-buttons"><a class="button button-quiet" href="{% url 'usuarios:list' %}"><span class="material-symbols" aria-hidden="true">close</span>Cancelar</a><c-button.filled type="submit" icon="save">Guardar</c-button.filled></div>
   </form></c-card.outlined>
 </div></section>

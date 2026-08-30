@@ -35,7 +35,7 @@
     <section class="quick-actions" aria-labelledby="quick-actions-heading">
       <div class="dashboard-section-heading"><div><span>Accesos</span><h2 id="quick-actions-heading">Acciones rápidas</h2></div></div>
       <div class="quick-actions-grid">
-        <a href="{% url 'usuarios:list' %}"><span class="quick-icon material-symbols" aria-hidden="true">group</span><span><strong>Gestionar usuarios</strong><small>Crear, editar y dar de baja cuentas</small></span><span class="material-symbols" aria-hidden="true">arrow_forward</span></a>
+        {% if 'ADMINISTRADOR' in request.session.roles %}<a href="{% url 'usuarios:list' %}"><span class="quick-icon material-symbols" aria-hidden="true">group</span><span><strong>Gestionar usuarios</strong><small>Crear, editar, asignar roles y dar de baja</small></span><span class="material-symbols" aria-hidden="true">arrow_forward</span></a>{% endif %}
         <a href="{% url 'consultar_clientes' %}"><span class="quick-icon material-symbols" aria-hidden="true">domain</span><span><strong>Gestionar clientes</strong><small>Registrar, editar y seleccionar el contexto</small></span><span class="material-symbols" aria-hidden="true">arrow_forward</span></a>
         <a href="{% url 'usuarios:home' %}#cotizaciones"><span class="quick-icon material-symbols" aria-hidden="true">currency_exchange</span><span><strong>Conversor de divisas</strong><small>Simular conversiones de referencia</small></span><span class="material-symbols" aria-hidden="true">arrow_forward</span></a>
       </div>
