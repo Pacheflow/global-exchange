@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Editar Cliente</title>
+</head>
+<body>
+
+    <h1>Editar Cliente</h1>
+
+    {% if cliente_no_encontrado %}
+
+        <p>Cliente no encontrado.</p>
+
+    {% else %}
+
+        <form method="POST">
+            {% csrf_token %}
+
+            {{ form.as_p }}
+
+            <button type="submit">Guardar Cambios</button>
+        </form>
+
+    {% endif %}
+
+    <br>
+
+    <a href="{% url 'consultar_clientes' %}">Volver</a>
+
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Consultar Clientes</title>
+</head>
+
+<body>
+
+    <h1>Consultar Clientes</h1>
+
+    <form method="GET">
+        <input
+            type="text"
+            name="buscar"
+            placeholder="Buscar por nombre"
+            value="{{ busqueda }}"
+        >
+        <button type="submit">Buscar</button>
+    </form>
+
+    <br>
+
+    {% if clientes %}
+
+        <table border="1">
+
+            <tr>
+                <th>Nombre / Razón Social</th>
+                <th>Tipo de Persona</th>
+                <th>Documento</th>
+                <th>Estado</th>
+                <th>Categoría</th>
+                <th>Acciones</th>
+            </tr>
+
+            {% for cliente in clientes %}
+
+                <tr>
+
+                    <td>{{ cliente.nombre_razon_social }}</td>
+
+                    <td>{{ cliente.get_tipo_persona_display }}</td>
+
+                    <td>{{ cliente.documento }}</td>
+
+                    <td>{{ cliente.estado }}</td>
+
+                    <td>
+                        {% if cliente.categoria %}
+                            {{ cliente.categoria.nombre }}
+                        {% else %}
+                            Sin categoría
+                        {% endif %}
+                    </td>
+
+                    <td>
+
+                        <a href="{% url 'editar_cliente' cliente.id %}">
+                            <button>Editar</button>
+                        </a>
+
+                        <a href="{% url 'dar_de_baja_cliente' cliente.id %}">
+                            <button>Dar de Baja</button>
+                        </a>
+
+                        <a href="{% url 'segmentar_cliente' cliente.id %}">
+                            <button>Segmentar</button>
+                        </a>
+
+                    </td>
+
+                </tr>
+
+            {% endfor %}
+
+        </table>
+
+    {% else %}
+
+        <p>No se encontraron clientes.</p>
+
+    {% endif %}
+
+    <br>
+
+    <a href="{% url 'inicio_clientes' %}">Volver</a>
+
+</body>
+
+</html>
