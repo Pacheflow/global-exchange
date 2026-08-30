@@ -4,11 +4,12 @@ from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
-from django.http import HttpResponseBadRequest
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from .keycloak import KeycloakError, admin_request, endpoint, exchange_code, userinfo
+from .services.keycloak import SESSION_ROLES, SESSION_USUARIO, establecer_sesion_oidc
 
 
 def _absolute(request, name):
@@ -68,6 +69,14 @@ def callback(request):
     request.session["kc_user"] = profile
     request.session["kc_access_token"] = tokens["access_token"]
     request.session["kc_id_token"] = tokens.get("id_token")
+    try:
+        from .services.keycloak import validar_access_token
+
+        establecer_sesion_oidc(request, validar_access_token(tokens["access_token"]))
+    except Exception:
+        # `userinfo` mantiene la sesión web; los roles se habilitan cuando el
+        # token real contiene los claims configurados en Keycloak.
+        pass
     messages.success(request, f"¡Hola, {profile.get('given_name') or profile.get('preferred_username')}!")
     return redirect(request.session.pop("next", "usuarios:dashboard"))
 
@@ -184,3 +193,24 @@ def clientes(request):
             messages.success(request, "Contexto de cliente actualizado.")
             return redirect("usuarios:dashboard")
     return render(request, "usuarios/client_select.html", {"clients": available})
+
+
+@oidc_required
+def perfil_usuario(request):
+    return JsonResponse({
+        "usuario": request.session.get(SESSION_USUARIO, request.session.get("kc_user", {})),
+        "roles": request.session.get(SESSION_ROLES, []),
+    })
+
+
+@oidc_required
+def acceso_administrador(request):
+    if "ADMINISTRADOR" not in request.session.get(SESSION_ROLES, []):
+        return JsonResponse(
+            {"error": "Acceso denegado", "rol_requerido": "ADMINISTRADOR"},
+            status=403,
+        )
+    return JsonResponse({
+        "message": "Acceso administrativo permitido",
+        "usuario": request.session.get(SESSION_USUARIO, request.session.get("kc_user", {})),
+    })

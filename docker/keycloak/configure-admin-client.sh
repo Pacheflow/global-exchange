@@ -1,4 +1,5 @@
 #!/bin/sh
+# Este archivo debe conservar finales de línea LF para ejecutarse en Linux.
 set -eu
 
 KCADM=/opt/keycloak/bin/kcadm.sh

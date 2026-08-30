@@ -20,6 +20,14 @@ services:
       start_period: 10s
     networks: [global_exchange]
 
+  mailpit:
+    image: axllent/mailpit
+    container_name: global-exchange-mailpit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks: [global_exchange]
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.7.2
     container_name: global-exchange-keycloak
@@ -56,7 +64,10 @@ services:
     image: quay.io/keycloak/keycloak:26.7.2
     container_name: global-exchange-keycloak-config
     restart: "no"
-    entrypoint: ["/bin/sh", "/config/configure-admin-client.sh"]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "sed 's/\\r$//' /config/configure-admin-client.sh > /tmp/configure-admin-client.sh && exec /bin/sh /tmp/configure-admin-client.sh"
     environment:
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-global-exchange}

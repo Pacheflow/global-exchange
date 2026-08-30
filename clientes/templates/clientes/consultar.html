@@ -1,0 +1,30 @@
+{% extends 'usuarios/base.html' %}
+{% block title %}Clientes · Global Exchange{% endblock %}
+{% block content %}
+<section class="workspace">
+  <header class="workspace-header">
+    <div class="page-intro"><h1>Clientes</h1><p>Administrá y seleccioná las personas y empresas que operan en la plataforma.</p></div>
+    <a class="button button-dark" href="{% url 'registrar_cliente' %}"><span class="material-symbols" aria-hidden="true">person_add</span>Nuevo cliente</a>
+  </header>
+  <form class="client-search" method="get" role="search">
+    <label class="sr-only" for="buscar-cliente">Buscar cliente</label><span class="material-symbols" aria-hidden="true">search</span>
+    <input id="buscar-cliente" type="search" name="buscar" placeholder="Buscar por nombre o razón social" value="{{ busqueda }}">
+    <button class="button button-dark" type="submit">Buscar</button>
+    {% if busqueda %}<a class="button button-quiet" href="{% url 'consultar_clientes' %}">Limpiar</a>{% endif %}
+  </form>
+  <div class="data-table client-table"><table>
+    <thead><tr><th>Cliente</th><th>Documento</th><th>Categoría</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <tbody>{% for cliente in clientes %}<tr>
+      <td><strong>{{ cliente.nombre_razon_social }}</strong><span>{{ cliente.get_tipo_persona_display }}</span></td>
+      <td>{{ cliente.documento }}</td><td>{{ cliente.categoria.nombre|default:'Sin categoría' }}</td>
+      <td><span class="state {% if cliente.estado != 'ACTIVO' %}disabled{% endif %}">{{ cliente.get_estado_display }}</span></td>
+      <td class="client-actions">
+        {% if cliente.estado == 'ACTIVO' %}<form method="post" action="{% url 'seleccionar_cliente' cliente.id %}">{% csrf_token %}<button class="table-action primary" type="submit" title="Seleccionar cliente"><span class="material-symbols" aria-hidden="true">check_circle</span><span>Seleccionar</span></button></form>{% endif %}
+        <a class="table-action" href="{% url 'editar_cliente' cliente.id %}" title="Editar cliente"><span class="material-symbols" aria-hidden="true">edit</span><span>Editar</span></a>
+        <a class="table-action" href="{% url 'segmentar_cliente' cliente.id %}" title="Segmentar cliente"><span class="material-symbols" aria-hidden="true">category</span><span>Segmentar</span></a>
+        {% if cliente.estado == 'ACTIVO' %}<a class="table-action danger" href="{% url 'dar_de_baja_cliente' cliente.id %}" title="Dar de baja"><span class="material-symbols" aria-hidden="true">person_off</span><span>Dar de baja</span></a>{% endif %}
+      </td>
+    </tr>{% empty %}<tr><td class="no-data" colspan="5">No se encontraron clientes.{% if busqueda %} Probá con otra búsqueda.{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endblock %}

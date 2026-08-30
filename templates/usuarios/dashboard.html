@@ -17,7 +17,7 @@
     <div class="dashboard-intro">
       <div><h1>Hola, {{ display_name }}</h1><p>Consultá el mercado y administrá tu espacio de trabajo.</p></div>
       <div class="dashboard-header-actions">
-        <a class="button platform-primary" href="{% url 'usuarios:clients' %}"><span class="material-symbols" aria-hidden="true">add</span>{% if request.session.selected_client %}Cambiar cliente{% else %}Seleccionar cliente{% endif %}</a>
+        <a class="button platform-primary" href="{% url 'consultar_clientes' %}"><span class="material-symbols" aria-hidden="true">add</span>{% if request.session.selected_client %}Cambiar cliente{% else %}Seleccionar cliente{% endif %}</a>
       </div>
     </div>
 
@@ -36,7 +36,7 @@
       <div class="dashboard-section-heading"><div><span>Accesos</span><h2 id="quick-actions-heading">Acciones rápidas</h2></div></div>
       <div class="quick-actions-grid">
         <a href="{% url 'usuarios:list' %}"><span class="quick-icon material-symbols" aria-hidden="true">group</span><span><strong>Gestionar usuarios</strong><small>Crear, editar y dar de baja cuentas</small></span><span class="material-symbols" aria-hidden="true">arrow_forward</span></a>
-        <a href="{% url 'usuarios:clients' %}"><span class="quick-icon material-symbols" aria-hidden="true">domain</span><span><strong>Seleccionar cliente</strong><small>Definir el contexto de trabajo actual</small></span><span class="material-symbols" aria-hidden="true">arrow_forward</span></a>
+        <a href="{% url 'consultar_clientes' %}"><span class="quick-icon material-symbols" aria-hidden="true">domain</span><span><strong>Gestionar clientes</strong><small>Registrar, editar y seleccionar el contexto</small></span><span class="material-symbols" aria-hidden="true">arrow_forward</span></a>
         <a href="{% url 'usuarios:home' %}#cotizaciones"><span class="quick-icon material-symbols" aria-hidden="true">currency_exchange</span><span><strong>Conversor de divisas</strong><small>Simular conversiones de referencia</small></span><span class="material-symbols" aria-hidden="true">arrow_forward</span></a>
       </div>
     </section>
