@@ -1,4 +1,5 @@
 from functools import lru_cache
+import time
 
 import requests
 import jwt
@@ -24,6 +25,7 @@ ROLES_SISTEMA = frozenset(
 SESSION_AUTENTICADO = "oidc_authenticated"
 SESSION_USUARIO = "oidc_user"
 SESSION_ROLES = "roles"
+SESSION_EXPIRA_EN = "oidc_expires_at"
 
 ALGORITMOS_PERMITIDOS = ("RS256",)
 TIMEOUT_KEYCLOAK = 10
@@ -64,7 +66,7 @@ def validar_access_token(access_token):
     if algoritmo not in ALGORITMOS_PERMITIDOS:
         raise InvalidAlgorithmError("Algoritmo de firma no permitido.")
 
-    issuer = _realm_url(settings.KEYCLOAK_SERVER_URL)
+    issuer = settings.KEYCLOAK_EXPECTED_ISSUER
     jwks_url = (
         f"{_realm_url(settings.KEYCLOAK_INTERNAL_URL)}"
         "/protocol/openid-connect/certs"
@@ -110,11 +112,20 @@ def validar_access_token(access_token):
             "El token no fue emitido para el cliente configurado."
         )
 
+    if claims.get("email_verified") is not True:
+        raise InvalidTokenError("La cuenta de Keycloak no está verificada.")
+
     return claims
 
 
 def establecer_sesion_oidc(request, claims):
     """Crea el contexto de autenticación usado por la autorización backend."""
+
+    expira_en = int(claims["exp"])
+    segundos_restantes = expira_en - int(time.time())
+
+    if segundos_restantes <= 0:
+        raise InvalidTokenError("La autenticación de Keycloak ya expiró.")
 
     request.session.cycle_key()
     request.session[SESSION_AUTENTICADO] = True
@@ -124,12 +135,38 @@ def establecer_sesion_oidc(request, claims):
         "email": claims.get("email", ""),
     }
     request.session[SESSION_ROLES] = extraer_roles_sistema(claims)
+    request.session[SESSION_EXPIRA_EN] = expira_en
+    request.session.set_expiry(segundos_restantes)
+
+
+def sesion_oidc_vigente(request):
+    """Comprueba identidad y expiración del contexto OIDC almacenado."""
+
+    usuario = request.session.get(SESSION_USUARIO, {})
+    expira_en = request.session.get(SESSION_EXPIRA_EN)
+    vigente = (
+        request.session.get(SESSION_AUTENTICADO) is True
+        and isinstance(usuario, dict)
+        and bool(usuario.get("sub"))
+        and isinstance(expira_en, (int, float))
+        and expira_en > time.time()
+    )
+
+    if not vigente:
+        limpiar_sesion_oidc(request)
+
+    return vigente
 
 
 def limpiar_sesion_oidc(request):
     """Elimina cualquier autorización OIDC previa de la sesión."""
 
-    for clave in (SESSION_AUTENTICADO, SESSION_USUARIO, SESSION_ROLES):
+    for clave in (
+        SESSION_AUTENTICADO,
+        SESSION_USUARIO,
+        SESSION_ROLES,
+        SESSION_EXPIRA_EN,
+    ):
         request.session.pop(clave, None)
 
 

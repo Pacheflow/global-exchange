@@ -14,10 +14,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-KEYCLOAK_SERVER_URL = os.getenv(
-    "KEYCLOAK_SERVER_URL",
-    "http://localhost:8080",
-)
+KEYCLOAK_PUBLIC_URL = os.getenv(
+    "KEYCLOAK_PUBLIC_URL",
+    os.getenv("KEYCLOAK_SERVER_URL", "http://localhost:8080"),
+).rstrip("/")
+
+# Alias temporal para conservar compatibilidad con configuraciones existentes.
+KEYCLOAK_SERVER_URL = KEYCLOAK_PUBLIC_URL
 
 KEYCLOAK_INTERNAL_URL = os.getenv(
     "KEYCLOAK_INTERNAL_URL",
@@ -33,6 +36,48 @@ KEYCLOAK_CLIENT_ID = os.getenv(
     "KEYCLOAK_CLIENT_ID",
     "global-exchange-web",
 )
+
+KEYCLOAK_EXPECTED_ISSUER = os.getenv(
+    "KEYCLOAK_EXPECTED_ISSUER",
+    f"{KEYCLOAK_PUBLIC_URL}/realms/{KEYCLOAK_REALM}",
+).rstrip("/")
+
+BACKEND_PUBLIC_URL = os.getenv(
+    "BACKEND_PUBLIC_URL",
+    "http://localhost:8000",
+).rstrip("/")
+
+OIDC_CALLBACK_URL = os.getenv(
+    "OIDC_CALLBACK_URL",
+    f"{BACKEND_PUBLIC_URL}/usuarios/callback/",
+)
+
+# Destinos fijos y opcionales para el frontend separado. Mientras estén vacíos,
+# el callback responde JSON y nunca acepta destinos arbitrarios del navegador.
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000").rstrip("/")
+OIDC_LOGIN_SUCCESS_URL = os.getenv("OIDC_LOGIN_SUCCESS_URL", "")
+OIDC_REGISTRATION_SUCCESS_URL = os.getenv("OIDC_REGISTRATION_SUCCESS_URL", "")
+OIDC_ERROR_URL = os.getenv("OIDC_ERROR_URL", "")
+OIDC_FLOW_MAX_AGE_SECONDS = int(os.getenv("OIDC_FLOW_MAX_AGE_SECONDS", "600"))
+
+# Cookies de sesión preparadas para un frontend separado. Los valores seguros
+# para HTTPS pueden activarse por entorno sin habilitar CORS en esta etapa.
+SESSION_COOKIE_HTTPONLY = os.getenv("SESSION_COOKIE_HTTPONLY", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+CSRF_COOKIE_SECURE = os.getenv("CSRF_COOKIE_SECURE", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 from pathlib import Path
 
