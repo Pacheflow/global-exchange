@@ -1,49 +1,261 @@
+import base64
+import hashlib
 import secrets
-from functools import wraps
+import time
 from urllib.parse import urlencode
 
+import requests
 from django.conf import settings
 from django.contrib import messages
-from django.http import HttpResponseBadRequest, JsonResponse
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
-from django.urls import reverse
+from jwt.exceptions import InvalidTokenError
 
+from .decorators import requiere_autenticacion, requiere_rol, requiere_roles_web
 from .keycloak import (
     ROLES_NEGOCIO,
     KeycloakError,
     actualizar_roles_usuario,
     admin_request,
-    endpoint,
-    exchange_code,
     roles_usuario,
-    userinfo,
 )
-from .services.keycloak import SESSION_ROLES, SESSION_USUARIO, establecer_sesion_oidc
-from .decorators import requiere_roles_web
+from .services.keycloak import (
+    SESSION_ROLES,
+    SESSION_USUARIO,
+    establecer_sesion_oidc,
+    validar_access_token,
+)
+
+OIDC_FLOWS_SESSION_KEY = "oidc_flows"
+FLUJO_LOGIN = "login"
+FLUJO_REGISTRO = "registro"
 
 
-def _absolute(request, name):
-    return request.build_absolute_uri(reverse(name))
+def _iniciar_flujo_oidc(request, tipo_flujo, endpoint):
+    """Crea una transacción OIDC independiente, vinculando state y PKCE."""
 
+    ahora = int(time.time())
+    flows = request.session.get(OIDC_FLOWS_SESSION_KEY, {})
+    if not isinstance(flows, dict):
+        flows = {}
 
-def _auth_url(request, registration=False):
+    flows = {
+        state: flow
+        for state, flow in flows.items()
+        if isinstance(flow, dict)
+        and ahora - flow.get("creado_en", 0) <= settings.OIDC_FLOW_MAX_AGE_SECONDS
+    }
+
     state = secrets.token_urlsafe(32)
-    request.session["oidc_state"] = state
-    action = "registrations" if registration else "auth"
-    params = {"client_id": settings.KEYCLOAK_CLIENT_ID, "response_type": "code",
-              "scope": "openid profile email roles", "redirect_uri": _absolute(request, "usuarios:callback"), "state": state}
-    return f"{endpoint('/protocol/openid-connect/' + action)}?{urlencode(params)}"
+    code_verifier = secrets.token_urlsafe(64)
+    code_challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+        .decode()
+        .rstrip("=")
+    )
+
+    flows[state] = {
+        "code_verifier": code_verifier,
+        "tipo_flujo": tipo_flujo,
+        "creado_en": ahora,
+    }
+    request.session[OIDC_FLOWS_SESSION_KEY] = flows
+
+    params = {
+        "client_id": settings.KEYCLOAK_CLIENT_ID,
+        "response_type": "code",
+        "scope": "openid profile email",
+        "redirect_uri": settings.OIDC_CALLBACK_URL,
+        "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+    }
+
+    return redirect(f"{endpoint}?{urlencode(params)}")
 
 
-def oidc_required(view):
-    @wraps(view)
-    def wrapped(request, *args, **kwargs):
-        if not request.session.get("kc_user"):
-            request.session["next"] = request.get_full_path()
-            messages.info(request, "Iniciá sesión para continuar.")
-            return redirect("usuarios:login")
-        return view(request, *args, **kwargs)
-    return wrapped
+def _consumir_flujo_oidc(request, state_recibido):
+    """Valida state con comparación segura y consume el flujo una sola vez."""
+
+    flows = request.session.get(OIDC_FLOWS_SESSION_KEY, {})
+    if not state_recibido or not isinstance(flows, dict):
+        request.session.pop(OIDC_FLOWS_SESSION_KEY, None)
+        return None
+
+    state_valido = next(
+        (
+            state_guardado
+            for state_guardado in flows
+            if secrets.compare_digest(state_guardado, state_recibido)
+        ),
+        None,
+    )
+
+    if state_valido is None:
+        request.session.pop(OIDC_FLOWS_SESSION_KEY, None)
+        return None
+
+    flow = flows.pop(state_valido)
+    if flows:
+        request.session[OIDC_FLOWS_SESSION_KEY] = flows
+    else:
+        request.session.pop(OIDC_FLOWS_SESSION_KEY, None)
+
+    if (
+        not isinstance(flow, dict)
+        or int(time.time()) - flow.get("creado_en", 0)
+        > settings.OIDC_FLOW_MAX_AGE_SECONDS
+    ):
+        return None
+
+    return flow
+
+
+def _respuesta_error_oidc(mensaje, status):
+    """Responde JSON o usa el destino de error fijo configurado por backend."""
+
+    if settings.OIDC_ERROR_URL:
+        separador = "&" if "?" in settings.OIDC_ERROR_URL else "?"
+        return redirect(
+            f"{settings.OIDC_ERROR_URL}{separador}"
+            f"{urlencode({'error': 'authentication_failed'})}"
+        )
+
+    return JsonResponse({"error": mensaje}, status=status)
+
+
+def registro(request):
+    """
+    Redirige al usuario al formulario de registro administrado por Keycloak.
+    """
+
+    registration_endpoint = (
+        f"{settings.KEYCLOAK_PUBLIC_URL}/realms/"
+        f"{settings.KEYCLOAK_REALM}/protocol/openid-connect/registrations"
+    )
+    return _iniciar_flujo_oidc(request, FLUJO_REGISTRO, registration_endpoint)
+
+
+def login(request):
+    """
+    Inicia sesión utilizando Keycloak mediante Authorization Code Flow + PKCE.
+    """
+
+    authorization_endpoint = (
+        f"{settings.KEYCLOAK_PUBLIC_URL}/realms/"
+        f"{settings.KEYCLOAK_REALM}/protocol/openid-connect/auth"
+    )
+    return _iniciar_flujo_oidc(request, FLUJO_LOGIN, authorization_endpoint)
+
+
+def callback(request):
+    """
+    Recibe la respuesta de Keycloak después del login.
+    """
+
+    state = request.GET.get("state")
+    flow = _consumir_flujo_oidc(request, state)
+
+    if flow is None:
+        return _respuesta_error_oidc("State OIDC inválido o expirado", 400)
+
+    if request.GET.get("error"):
+        return _respuesta_error_oidc("Keycloak rechazó la autenticación", 400)
+
+    code = request.GET.get("code")
+    if not code:
+        return _respuesta_error_oidc("No se recibió código de autorización", 400)
+
+    token_endpoint = (
+        f"{settings.KEYCLOAK_INTERNAL_URL}/realms/"
+        f"{settings.KEYCLOAK_REALM}/protocol/openid-connect/token"
+    )
+
+    code_verifier = flow.get("code_verifier")
+    tipo_flujo = flow.get("tipo_flujo")
+    if not code_verifier or tipo_flujo not in {FLUJO_LOGIN, FLUJO_REGISTRO}:
+        return _respuesta_error_oidc(
+            "No se encontró un flujo de autenticación válido", 400
+        )
+
+    data = {
+        "grant_type": "authorization_code",
+        "client_id": settings.KEYCLOAK_CLIENT_ID,
+        "code": code,
+        "redirect_uri": settings.OIDC_CALLBACK_URL,
+        "code_verifier": code_verifier,
+    }
+
+    try:
+        response = requests.post(
+            token_endpoint,
+            data=data,
+            timeout=10,
+        )
+    except requests.RequestException:
+        return _respuesta_error_oidc("Keycloak no está disponible", 502)
+
+    if response.status_code != 200:
+        return _respuesta_error_oidc("No se pudo autenticar con Keycloak", 400)
+
+    try:
+        tokens = response.json()
+        claims = validar_access_token(tokens.get("access_token"))
+        establecer_sesion_oidc(request, claims)
+        request.session["kc_access_token"] = tokens["access_token"]
+        request.session["kc_id_token"] = tokens.get("id_token")
+    except (AttributeError, TypeError, ValueError, InvalidTokenError):
+        return _respuesta_error_oidc("Keycloak devolvió un token inválido", 400)
+
+    success_url = (
+        settings.OIDC_REGISTRATION_SUCCESS_URL
+        if tipo_flujo == FLUJO_REGISTRO
+        else settings.OIDC_LOGIN_SUCCESS_URL
+    )
+    if success_url:
+        return redirect(success_url)
+
+    if "text/html" in request.headers.get("Accept", ""):
+        return redirect("usuarios:dashboard")
+
+    return JsonResponse(
+        {
+            "message": (
+                "Registro y autenticación exitosos"
+                if tipo_flujo == FLUJO_REGISTRO
+                else "Login exitoso"
+            ),
+            "flujo": tipo_flujo,
+            "usuario": request.session[SESSION_USUARIO],
+            "roles": request.session[SESSION_ROLES],
+        }
+    )
+
+
+@requiere_autenticacion
+def perfil_usuario(request):
+    """
+    Devuelve la información del usuario autenticado y sus roles.
+    """
+
+    return JsonResponse(
+        {
+            "usuario": request.session[SESSION_USUARIO],
+            "roles": request.session[SESSION_ROLES],
+        }
+    )
+
+
+@requiere_rol("ADMINISTRADOR")
+def acceso_administrador(request):
+    """Vista mínima para comprobar autorización backend por rol."""
+
+    return JsonResponse(
+        {
+            "message": "Acceso administrativo permitido",
+            "usuario": request.session[SESSION_USUARIO],
+        }
+    )
 
 
 def home(request):
@@ -52,55 +264,23 @@ def home(request):
     return render(request, "usuarios/home.html")
 
 
-def login(request):
-    return redirect(_auth_url(request))
-
-
-def registro(request):
-    return redirect(_auth_url(request, True))
-
-
-def callback(request):
-    if request.GET.get("error"):
-        messages.error(request, "Keycloak canceló o rechazó el acceso.")
-        return redirect("usuarios:home")
-    expected = request.session.pop("oidc_state", "")
-    if not expected or not secrets.compare_digest(request.GET.get("state", ""), expected):
-        return HttpResponseBadRequest("Estado OIDC inválido. Volvé a iniciar sesión.")
-    if not request.GET.get("code"):
-        return HttpResponseBadRequest("Keycloak no devolvió el código de autorización.")
-    try:
-        tokens = exchange_code(request.GET["code"], _absolute(request, "usuarios:callback"))
-        profile = userinfo(tokens["access_token"])
-    except KeycloakError as exc:
-        messages.error(request, str(exc))
-        return redirect("usuarios:home")
-    request.session.cycle_key()
-    request.session["kc_user"] = profile
-    request.session["kc_access_token"] = tokens["access_token"]
-    request.session["kc_id_token"] = tokens.get("id_token")
-    try:
-        from .services.keycloak import validar_access_token
-
-        establecer_sesion_oidc(request, validar_access_token(tokens["access_token"]))
-    except Exception:
-        # `userinfo` mantiene la sesión web; los roles se habilitan cuando el
-        # token real contiene los claims configurados en Keycloak.
-        pass
-    messages.success(request, f"¡Hola, {profile.get('given_name') or profile.get('preferred_username')}!")
-    return redirect(request.session.pop("next", "usuarios:dashboard"))
-
-
 def logout(request):
-    hint = request.session.get("kc_id_token")
+    id_token = request.session.get("kc_id_token")
     request.session.flush()
-    params = {"client_id": settings.KEYCLOAK_CLIENT_ID, "post_logout_redirect_uri": _absolute(request, "usuarios:home")}
-    if hint:
-        params["id_token_hint"] = hint
-    return redirect(f"{endpoint('/protocol/openid-connect/logout')}?{urlencode(params)}")
+    params = {
+        "client_id": settings.KEYCLOAK_CLIENT_ID,
+        "post_logout_redirect_uri": f"{settings.BACKEND_PUBLIC_URL}/",
+    }
+    if id_token:
+        params["id_token_hint"] = id_token
+    endpoint = (
+        f"{settings.KEYCLOAK_PUBLIC_URL}/realms/{settings.KEYCLOAK_REALM}"
+        "/protocol/openid-connect/logout"
+    )
+    return redirect(f"{endpoint}?{urlencode(params)}")
 
 
-@oidc_required
+@requiere_roles_web("ADMINISTRADOR", "CAJERO", "ANALISTA_CAMBIARIO", "USUARIO")
 def dashboard(request):
     profile = request.session["kc_user"]
     display_name = (
@@ -125,10 +305,15 @@ def usuarios(request):
 def crear_usuario(request):
     if request.method == "POST":
         password = request.POST.get("password", "")
-        payload = {"username": request.POST.get("username", "").strip(), "email": request.POST.get("email", "").strip(),
-                   "firstName": request.POST.get("first_name", "").strip(), "lastName": request.POST.get("last_name", "").strip(),
-                   "enabled": True, "emailVerified": False,
-                   "credentials": [{"type": "password", "value": password, "temporary": True}]}
+        payload = {
+            "username": request.POST.get("username", "").strip(),
+            "email": request.POST.get("email", "").strip(),
+            "firstName": request.POST.get("first_name", "").strip(),
+            "lastName": request.POST.get("last_name", "").strip(),
+            "enabled": True,
+            "emailVerified": False,
+            "credentials": [{"type": "password", "value": password, "temporary": True}],
+        }
         if not payload["username"] or not payload["email"] or len(password) < 8:
             messages.error(request, "Completá usuario, email y una contraseña de al menos 8 caracteres.")
         else:
@@ -136,20 +321,12 @@ def crear_usuario(request):
                 admin_request("/users", method="POST", payload=payload)
                 created = admin_request(f"/users?username={payload['username']}&exact=true") or []
                 if created:
-                    actualizar_roles_usuario(
-                        created[0]["id"],
-                        request.POST.getlist("roles") or ["USUARIO"],
-                    )
-                messages.success(request, "Usuario creado. Deberá cambiar su contraseña al ingresar.")
+                    actualizar_roles_usuario(created[0]["id"], request.POST.getlist("roles") or ["USUARIO"])
+                messages.success(request, "Usuario creado con sus roles de negocio.")
                 return redirect("usuarios:list")
             except KeycloakError as exc:
                 messages.error(request, str(exc))
-    form_values = {
-        "username": request.POST.get("username", ""),
-        "first_name": request.POST.get("first_name", ""),
-        "last_name": request.POST.get("last_name", ""),
-        "email": request.POST.get("email", ""),
-    }
+    form_values = {name: request.POST.get(name, "") for name in ("username", "first_name", "last_name", "email")}
     return render(request, "usuarios/user_form.html", {
         "mode": "create",
         "form_values": form_values,
@@ -163,12 +340,17 @@ def editar_usuario(request, user_id):
     try:
         user = admin_request(f"/users/{user_id}")
         if request.method == "POST":
-            user.update({"email": request.POST.get("email", "").strip(), "firstName": request.POST.get("first_name", "").strip(),
-                         "lastName": request.POST.get("last_name", "").strip(), "enabled": request.POST.get("enabled") == "on"})
+            user.update({
+                "email": request.POST.get("email", "").strip(),
+                "firstName": request.POST.get("first_name", "").strip(),
+                "lastName": request.POST.get("last_name", "").strip(),
+                "enabled": request.POST.get("enabled") == "on",
+            })
             admin_request(f"/users/{user_id}", method="PUT", payload=user)
             actualizar_roles_usuario(user_id, request.POST.getlist("roles"))
-            messages.success(request, "Usuario actualizado.")
+            messages.success(request, "Usuario y roles actualizados.")
             return redirect("usuarios:list")
+        selected_roles = roles_usuario(user_id)
     except KeycloakError as exc:
         messages.error(request, str(exc))
         return redirect("usuarios:list")
@@ -177,10 +359,6 @@ def editar_usuario(request, user_id):
         "last_name": user.get("lastName", ""),
         "email": user.get("email", ""),
     }
-    try:
-        selected_roles = request.POST.getlist("roles") if request.method == "POST" else roles_usuario(user_id)
-    except KeycloakError:
-        selected_roles = []
     return render(request, "usuarios/user_form.html", {
         "mode": "edit",
         "managed_user": user,
@@ -203,39 +381,6 @@ def baja_usuario(request, user_id):
     return redirect("usuarios:list")
 
 
-@oidc_required
+@requiere_roles_web("ADMINISTRADOR", "CAJERO", "ANALISTA_CAMBIARIO", "USUARIO")
 def clientes(request):
-    raw = request.session["kc_user"].get("clientes") or request.session["kc_user"].get("client_ids") or []
-    if isinstance(raw, str):
-        raw = [value.strip() for value in raw.split(",") if value.strip()]
-    available = [{"id": value, "name": value.replace("-", " ").title()} for value in raw]
-    if request.method == "POST":
-        chosen = request.POST.get("cliente")
-        if chosen not in {item["id"] for item in available}:
-            messages.error(request, "Ese cliente no está asociado a tu usuario.")
-        else:
-            request.session["selected_client"] = next(item for item in available if item["id"] == chosen)
-            messages.success(request, "Contexto de cliente actualizado.")
-            return redirect("usuarios:dashboard")
-    return render(request, "usuarios/client_select.html", {"clients": available})
-
-
-@oidc_required
-def perfil_usuario(request):
-    return JsonResponse({
-        "usuario": request.session.get(SESSION_USUARIO, request.session.get("kc_user", {})),
-        "roles": request.session.get(SESSION_ROLES, []),
-    })
-
-
-@oidc_required
-def acceso_administrador(request):
-    if "ADMINISTRADOR" not in request.session.get(SESSION_ROLES, []):
-        return JsonResponse(
-            {"error": "Acceso denegado", "rol_requerido": "ADMINISTRADOR"},
-            status=403,
-        )
-    return JsonResponse({
-        "message": "Acceso administrativo permitido",
-        "usuario": request.session.get(SESSION_USUARIO, request.session.get("kc_user", {})),
-    })
+    return redirect("consultar_clientes")

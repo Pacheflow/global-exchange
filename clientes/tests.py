@@ -3,6 +3,14 @@ from django.urls import reverse
 
 from .forms import ClienteForm
 from unittest.mock import patch
+import time
+
+from usuarios.services.keycloak import (
+    SESSION_AUTENTICADO,
+    SESSION_EXPIRA_EN,
+    SESSION_ROLES,
+    SESSION_USUARIO,
+)
 
 from .models import CategoriaCliente, Cliente, UsuarioCliente
 
@@ -10,7 +18,10 @@ from .models import CategoriaCliente, Cliente, UsuarioCliente
 def autenticar_admin(test_case):
     session = test_case.client.session
     session["kc_user"] = {"sub": "admin-id", "preferred_username": "admin"}
-    session["roles"] = ["ADMINISTRADOR"]
+    session[SESSION_AUTENTICADO] = True
+    session[SESSION_USUARIO] = {"sub": "admin-id", "username": "admin"}
+    session[SESSION_ROLES] = ["ADMINISTRADOR"]
+    session[SESSION_EXPIRA_EN] = int(time.time()) + 600
     session.save()
 
 
@@ -499,7 +510,8 @@ class AsignacionUsuarioClienteTest(TestCase):
     def test_usuario_autenticado_no_selecciona_cliente_sin_asignacion(self):
         session = self.client.session
         session["kc_user"] = {"sub": "kc-user-2", "preferred_username": "otro"}
-        session["roles"] = ["CAJERO"]
+        session[SESSION_USUARIO] = {"sub": "kc-user-2", "username": "otro"}
+        session[SESSION_ROLES] = ["CAJERO"]
         session.save()
 
         response = self.client.post(reverse("seleccionar_cliente", args=[self.cliente.id]))
