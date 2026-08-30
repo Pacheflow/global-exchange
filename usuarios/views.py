@@ -146,3 +146,17 @@ def callback(request):
             "roles": roles,
         }
     )
+
+
+def perfil_usuario(request):
+    """
+    Devuelve la información del usuario autenticado y sus roles.
+    """
+
+    roles = request.session.get("roles", [])
+
+    return JsonResponse(
+        {
+            "roles": roles,
+        }
+    )

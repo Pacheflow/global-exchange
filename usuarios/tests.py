@@ -129,3 +129,21 @@ class LoginUsuarioTests(TestCase):
             response.json()["access_token"],
             "token-prueba",
         )
+
+
+class PerfilUsuarioTests(TestCase):
+    """
+    Verifica que el sistema devuelva correctamente
+    los roles asociados al usuario autenticado.
+    Corresponde a la HU-04: Gestionar accesos.
+    """
+
+    def test_perfil_devuelve_roles_usuario(self):
+        session = self.client.session
+        session["roles"] = ["ADMINISTRADOR"]
+        session.save()
+
+        response = self.client.get(reverse("usuarios:perfil_usuario"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["roles"], ["ADMINISTRADOR"])
