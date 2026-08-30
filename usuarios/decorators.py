@@ -4,19 +4,9 @@ from django.http import JsonResponse
 
 from .services.keycloak import (
     ROLES_SISTEMA,
-    SESSION_AUTENTICADO,
     SESSION_ROLES,
-    SESSION_USUARIO,
+    sesion_oidc_vigente,
 )
-
-
-def _usuario_oidc_autenticado(request):
-    usuario = request.session.get(SESSION_USUARIO, {})
-    return (
-        request.session.get(SESSION_AUTENTICADO) is True
-        and isinstance(usuario, dict)
-        and bool(usuario.get("sub"))
-    )
 
 
 def requiere_autenticacion(view_func):
@@ -24,7 +14,7 @@ def requiere_autenticacion(view_func):
 
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
-        if not _usuario_oidc_autenticado(request):
+        if not sesion_oidc_vigente(request):
             return JsonResponse(
                 {"error": "Autenticación requerida"},
                 status=401,
@@ -46,7 +36,7 @@ def requiere_rol(rol_requerido):
     def decorator(view_func):
         @wraps(view_func)
         def wrapper(request, *args, **kwargs):
-            if not _usuario_oidc_autenticado(request):
+            if not sesion_oidc_vigente(request):
                 return JsonResponse(
                     {"error": "Autenticación requerida"},
                     status=401,
