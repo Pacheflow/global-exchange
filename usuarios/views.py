@@ -4,6 +4,7 @@ import secrets
 from urllib.parse import urlencode
 
 import requests
+import jwt
 from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import redirect
@@ -120,9 +121,28 @@ def callback(request):
 
     tokens = response.json()
 
+    access_token = tokens.get("access_token")
+
+    roles = []
+
+    if access_token:
+        try:
+            decoded_token = jwt.decode(
+                access_token,
+                options={"verify_signature": False},
+            )
+
+            roles = decoded_token.get("realm_access", {}).get("roles", [])
+
+        except jwt.DecodeError:
+            roles = []
+
+    request.session["roles"] = roles
+
     return JsonResponse(
         {
             "message": "Login exitoso",
-            "access_token": tokens.get("access_token"),
+            "access_token": access_token,
+            "roles": roles,
         }
     )
