@@ -19,6 +19,11 @@ KEYCLOAK_SERVER_URL = os.getenv(
     "http://localhost:8080",
 )
 
+KEYCLOAK_INTERNAL_URL = os.getenv(
+    "KEYCLOAK_INTERNAL_URL",
+    "http://localhost:8080",
+)
+
 KEYCLOAK_REALM = os.getenv(
     "KEYCLOAK_REALM",
     "global-exchange",
