@@ -1,5 +1,5 @@
 from django import forms
-from .models import Cliente
+from .models import Cliente, UsuarioCliente
 
 
 class ClienteForm(forms.ModelForm):
@@ -34,3 +34,17 @@ class SegmentacionClienteForm(forms.ModelForm):
         labels = {
             "categoria": "Categoría del cliente",
         }
+
+
+class AsignacionUsuarioClienteForm(forms.Form):
+    usuario = forms.ChoiceField(label="Usuario de Keycloak")
+    rol_en_cliente = forms.ChoiceField(
+        label="Permiso dentro del cliente",
+        choices=UsuarioCliente.ROLES,
+    )
+
+    def __init__(self, *args, usuarios=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["usuario"].choices = [
+            (user["id"], user["label"]) for user in usuarios
+        ]

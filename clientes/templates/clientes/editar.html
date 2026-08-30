@@ -1,32 +1,12 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Editar Cliente</title>
-</head>
-<body>
-
-    <h1>Editar Cliente</h1>
-
-    {% if cliente_no_encontrado %}
-
-        <p>Cliente no encontrado.</p>
-
-    {% else %}
-
-        <form method="POST">
-            {% csrf_token %}
-
-            {{ form.as_p }}
-
-            <button type="submit">Guardar Cambios</button>
-        </form>
-
-    {% endif %}
-
-    <br>
-
-    <a href="{% url 'consultar_clientes' %}">Volver</a>
-
-</body>
-</html>
+{% extends 'usuarios/base.html' %}
+{% block title %}Editar cliente · Global Exchange{% endblock %}
+{% block content %}
+<section class="workspace"><div class="content-narrow">
+  <header class="workspace-header workspace-header-stacked"><div class="page-intro"><a class="back-link" href="{% url 'consultar_clientes' %}">← Volver a clientes</a><h1>Editar cliente</h1><p>{% if cliente %}Actualizá los datos de {{ cliente.nombre_razon_social }}.{% endif %}</p></div></header>
+  {% if cliente_no_encontrado %}<div class="empty-state surface"><h2>Cliente no encontrado</h2><a class="button button-dark" href="{% url 'consultar_clientes' %}">Volver</a></div>{% else %}
+  <div class="form-surface"><form class="clean-form" method="post" novalidate>{% csrf_token %}
+    {% include 'clientes/partials/form_fields.html' %}
+    <div class="form-buttons"><a class="button button-quiet" href="{% url 'consultar_clientes' %}">Cancelar</a><button class="button button-dark" type="submit"><span class="material-symbols" aria-hidden="true">save</span>Guardar cambios</button></div>
+  </form></div>{% endif %}
+</div></section>
+{% endblock %}

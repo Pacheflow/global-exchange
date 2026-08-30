@@ -2,21 +2,25 @@ import base64
 import hashlib
 import secrets
 import time
+import json
 from urllib.parse import urlencode
 
 import requests
 from django.conf import settings
+from django.contrib import messages
 from django.http import JsonResponse
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from jwt.exceptions import InvalidTokenError
-import json
-
 from django.views.decorators.http import require_POST
-
-from .decorators import requiere_rol
 from .services.keycloak import asignar_rol_usuario
-
-from .decorators import requiere_autenticacion, requiere_rol
+from .decorators import requiere_autenticacion, requiere_rol, requiere_roles_web
+from .keycloak import (
+    ROLES_NEGOCIO,
+    KeycloakError,
+    actualizar_roles_usuario,
+    admin_request,
+    roles_usuario,
+)
 from .services.keycloak import (
     SESSION_ROLES,
     SESSION_USUARIO,
@@ -200,6 +204,8 @@ def callback(request):
         tokens = response.json()
         claims = validar_access_token(tokens.get("access_token"))
         establecer_sesion_oidc(request, claims)
+        request.session["kc_access_token"] = tokens["access_token"]
+        request.session["kc_id_token"] = tokens.get("id_token")
     except (AttributeError, TypeError, ValueError, InvalidTokenError):
         return _respuesta_error_oidc("Keycloak devolvió un token inválido", 400)
 
@@ -210,6 +216,9 @@ def callback(request):
     )
     if success_url:
         return redirect(success_url)
+
+    if "text/html" in request.headers.get("Accept", ""):
+        return redirect("usuarios:dashboard")
 
     return JsonResponse(
         {
@@ -249,6 +258,134 @@ def acceso_administrador(request):
             "usuario": request.session[SESSION_USUARIO],
         }
     )
+
+
+def home(request):
+    if request.session.get("kc_user"):
+        return redirect("usuarios:dashboard")
+    return render(request, "usuarios/home.html")
+
+
+def logout(request):
+    id_token = request.session.get("kc_id_token")
+    request.session.flush()
+    params = {
+        "client_id": settings.KEYCLOAK_CLIENT_ID,
+        "post_logout_redirect_uri": f"{settings.BACKEND_PUBLIC_URL}/",
+    }
+    if id_token:
+        params["id_token_hint"] = id_token
+    endpoint = (
+        f"{settings.KEYCLOAK_PUBLIC_URL}/realms/{settings.KEYCLOAK_REALM}"
+        "/protocol/openid-connect/logout"
+    )
+    return redirect(f"{endpoint}?{urlencode(params)}")
+
+
+@requiere_roles_web("ADMINISTRADOR", "CAJERO", "ANALISTA_CAMBIARIO", "USUARIO")
+def dashboard(request):
+    profile = request.session["kc_user"]
+    display_name = (
+        profile.get("given_name")
+        or profile.get("name")
+        or profile.get("preferred_username")
+        or "Usuario"
+    )
+    return render(request, "usuarios/dashboard.html", {"display_name": display_name})
+
+
+@requiere_roles_web("ADMINISTRADOR")
+def usuarios(request):
+    try:
+        rows, error = admin_request("/users?max=100"), None
+    except KeycloakError as exc:
+        rows, error = [], str(exc)
+    return render(request, "usuarios/user_list.html", {"users": rows, "api_error": error})
+
+
+@requiere_roles_web("ADMINISTRADOR")
+def crear_usuario(request):
+    if request.method == "POST":
+        password = request.POST.get("password", "")
+        payload = {
+            "username": request.POST.get("username", "").strip(),
+            "email": request.POST.get("email", "").strip(),
+            "firstName": request.POST.get("first_name", "").strip(),
+            "lastName": request.POST.get("last_name", "").strip(),
+            "enabled": True,
+            "emailVerified": False,
+            "credentials": [{"type": "password", "value": password, "temporary": True}],
+        }
+        if not payload["username"] or not payload["email"] or len(password) < 8:
+            messages.error(request, "Completá usuario, email y una contraseña de al menos 8 caracteres.")
+        else:
+            try:
+                admin_request("/users", method="POST", payload=payload)
+                created = admin_request(f"/users?username={payload['username']}&exact=true") or []
+                if created:
+                    actualizar_roles_usuario(created[0]["id"], request.POST.getlist("roles") or ["USUARIO"])
+                messages.success(request, "Usuario creado con sus roles de negocio.")
+                return redirect("usuarios:list")
+            except KeycloakError as exc:
+                messages.error(request, str(exc))
+    form_values = {name: request.POST.get(name, "") for name in ("username", "first_name", "last_name", "email")}
+    return render(request, "usuarios/user_form.html", {
+        "mode": "create",
+        "form_values": form_values,
+        "business_roles": ROLES_NEGOCIO,
+        "selected_roles": request.POST.getlist("roles") or ["USUARIO"],
+    })
+
+
+@requiere_roles_web("ADMINISTRADOR")
+def editar_usuario(request, user_id):
+    try:
+        user = admin_request(f"/users/{user_id}")
+        if request.method == "POST":
+            user.update({
+                "email": request.POST.get("email", "").strip(),
+                "firstName": request.POST.get("first_name", "").strip(),
+                "lastName": request.POST.get("last_name", "").strip(),
+                "enabled": request.POST.get("enabled") == "on",
+            })
+            admin_request(f"/users/{user_id}", method="PUT", payload=user)
+            actualizar_roles_usuario(user_id, request.POST.getlist("roles"))
+            messages.success(request, "Usuario y roles actualizados.")
+            return redirect("usuarios:list")
+        selected_roles = roles_usuario(user_id)
+    except KeycloakError as exc:
+        messages.error(request, str(exc))
+        return redirect("usuarios:list")
+    form_values = {
+        "first_name": user.get("firstName", ""),
+        "last_name": user.get("lastName", ""),
+        "email": user.get("email", ""),
+    }
+    return render(request, "usuarios/user_form.html", {
+        "mode": "edit",
+        "managed_user": user,
+        "form_values": form_values,
+        "business_roles": ROLES_NEGOCIO,
+        "selected_roles": selected_roles,
+    })
+
+
+@requiere_roles_web("ADMINISTRADOR")
+def baja_usuario(request, user_id):
+    if request.method == "POST":
+        try:
+            user = admin_request(f"/users/{user_id}")
+            user["enabled"] = False
+            admin_request(f"/users/{user_id}", method="PUT", payload=user)
+            messages.success(request, "Usuario dado de baja; sus datos fueron conservados.")
+        except KeycloakError as exc:
+            messages.error(request, str(exc))
+    return redirect("usuarios:list")
+
+
+@requiere_roles_web("ADMINISTRADOR", "CAJERO", "ANALISTA_CAMBIARIO", "USUARIO")
+def clientes(request):
+    return redirect("consultar_clientes")
 
 
 @require_POST
