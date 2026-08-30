@@ -4,10 +4,19 @@ import secrets
 from urllib.parse import urlencode
 
 import requests
-import jwt
 from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import redirect
+from jwt.exceptions import InvalidTokenError
+
+from .decorators import requiere_autenticacion, requiere_rol
+from .services.keycloak import (
+    SESSION_ROLES,
+    SESSION_USUARIO,
+    establecer_sesion_oidc,
+    limpiar_sesion_oidc,
+    validar_access_token,
+)
 
 
 def registro(request):
@@ -96,67 +105,85 @@ def callback(request):
         f"{settings.KEYCLOAK_REALM}/protocol/openid-connect/token"
     )
 
+    code_verifier = request.session.pop("code_verifier", None)
+
+    if not code_verifier:
+        limpiar_sesion_oidc(request)
+        return JsonResponse(
+            {"error": "No se encontró un flujo de autenticación válido"},
+            status=400,
+        )
+
     data = {
         "grant_type": "authorization_code",
         "client_id": settings.KEYCLOAK_CLIENT_ID,
         "code": code,
         "redirect_uri": "http://localhost:8000/usuarios/callback/",
-        "code_verifier": request.session.get("code_verifier"),
+        "code_verifier": code_verifier,
     }
 
-    response = requests.post(
-        token_endpoint,
-        data=data,
-        timeout=10,
-    )
+    try:
+        response = requests.post(
+            token_endpoint,
+            data=data,
+            timeout=10,
+        )
+    except requests.RequestException:
+        limpiar_sesion_oidc(request)
+        return JsonResponse(
+            {"error": "Keycloak no está disponible"},
+            status=502,
+        )
 
     if response.status_code != 200:
+        limpiar_sesion_oidc(request)
         return JsonResponse(
-            {
-                "error": "No se pudo autenticar con Keycloak",
-                "details": response.json(),
-            },
+            {"error": "No se pudo autenticar con Keycloak"},
             status=400,
         )
 
-    tokens = response.json()
+    try:
+        tokens = response.json()
+        claims = validar_access_token(tokens.get("access_token"))
+    except (ValueError, InvalidTokenError):
+        limpiar_sesion_oidc(request)
+        return JsonResponse(
+            {"error": "Keycloak devolvió un token inválido"},
+            status=400,
+        )
 
-    access_token = tokens.get("access_token")
-
-    roles = []
-
-    if access_token:
-        try:
-            decoded_token = jwt.decode(
-                access_token,
-                options={"verify_signature": False},
-            )
-
-            roles = decoded_token.get("realm_access", {}).get("roles", [])
-
-        except jwt.DecodeError:
-            roles = []
-
-    request.session["roles"] = roles
+    establecer_sesion_oidc(request, claims)
 
     return JsonResponse(
         {
             "message": "Login exitoso",
-            "access_token": access_token,
-            "roles": roles,
+            "usuario": request.session[SESSION_USUARIO],
+            "roles": request.session[SESSION_ROLES],
         }
     )
 
 
+@requiere_autenticacion
 def perfil_usuario(request):
     """
     Devuelve la información del usuario autenticado y sus roles.
     """
 
-    roles = request.session.get("roles", [])
+    return JsonResponse(
+        {
+            "usuario": request.session[SESSION_USUARIO],
+            "roles": request.session[SESSION_ROLES],
+        }
+    )
+
+
+@requiere_rol("ADMINISTRADOR")
+def acceso_administrador(request):
+    """Vista mínima para comprobar autorización backend por rol."""
 
     return JsonResponse(
         {
-            "roles": roles,
+            "message": "Acceso administrativo permitido",
+            "usuario": request.session[SESSION_USUARIO],
         }
     )
