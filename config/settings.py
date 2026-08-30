@@ -37,6 +37,13 @@ KEYCLOAK_CLIENT_ID = os.getenv(
     "global-exchange-web",
 )
 
+KEYCLOAK_ADMIN_CLIENT_ID = os.getenv(
+    "KEYCLOAK_ADMIN_CLIENT_ID", "global-exchange-admin-api"
+)
+KEYCLOAK_ADMIN_CLIENT_SECRET = os.getenv(
+    "KEYCLOAK_ADMIN_CLIENT_SECRET", "global-exchange-admin-dev-secret"
+)
+
 KEYCLOAK_EXPECTED_ISSUER = os.getenv(
     "KEYCLOAK_EXPECTED_ISSUER",
     f"{KEYCLOAK_PUBLIC_URL}/realms/{KEYCLOAK_REALM}",
@@ -49,7 +56,7 @@ BACKEND_PUBLIC_URL = os.getenv(
 
 OIDC_CALLBACK_URL = os.getenv(
     "OIDC_CALLBACK_URL",
-    f"{BACKEND_PUBLIC_URL}/usuarios/callback/",
+    f"{BACKEND_PUBLIC_URL}/callback/",
 )
 
 # Destinos fijos y opcionales para el frontend separado. Mientras estén vacíos,
@@ -102,6 +109,8 @@ ALLOWED_HOSTS = [host.strip() for host in os.getenv(
 # Application definition
 
 INSTALLED_APPS = [
+    "material",
+    "django_cotton",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -127,7 +136,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -179,9 +188,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Asuncion'
 
 USE_I18N = True
 
@@ -192,6 +201,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 
 # Email

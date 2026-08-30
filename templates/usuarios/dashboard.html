@@ -1,0 +1,45 @@
+{% extends 'usuarios/base.html' %}
+{% block title %}Panel · Global Exchange{% endblock %}
+{% block content %}
+<section class="platform-dashboard">
+  <details class="dashboard-profile-menu">
+    <summary class="account-menu" aria-label="Abrir menú de perfil">
+      <span class="material-symbols" aria-hidden="true">account_circle</span>
+      <span><strong>{% if request.session.selected_client %}{{ request.session.selected_client.name }}{% else %}Global Exchange{% endif %}</strong><small>{{ display_name }}</small></span>
+      <span class="material-symbols dropdown-chevron" aria-hidden="true">expand_more</span>
+    </summary>
+    <div class="profile-dropdown">
+      <div><strong>{{ display_name }}</strong><small>{{ request.session.kc_user.email|default:request.session.kc_user.preferred_username }}</small></div>
+      <a href="{% url 'usuarios:logout' %}"><span class="material-symbols" aria-hidden="true">logout</span>Cerrar sesión</a>
+    </div>
+  </details>
+  <div class="dashboard-content">
+    <div class="dashboard-intro">
+      <div><h1>Hola, {{ display_name }}</h1><p>Consultá el mercado y administrá tu espacio de trabajo.</p></div>
+      <div class="dashboard-header-actions">
+        <a class="button platform-primary" href="{% url 'consultar_clientes' %}"><span class="material-symbols" aria-hidden="true">add</span>{% if request.session.selected_client %}Cambiar cliente{% else %}Seleccionar cliente{% endif %}</a>
+      </div>
+    </div>
+
+    <section class="currency-panel" aria-labelledby="currency-heading">
+      <div class="dashboard-section-heading"><div><span>Mercado</span><h2 id="currency-heading">Cuentas de divisas</h2></div><a href="{% url 'usuarios:home' %}#tasas">Ver todas</a></div>
+      <div class="currency-carousel" tabindex="0" aria-label="Cotizaciones de monedas">
+        <article class="currency-account-card"><span class="currency-flag usd">US</span><small>Dólar estadounidense</small><strong>USD</strong><div><span>Compra <b>7.280</b></span><span>Venta <b>7.360</b></span></div></article>
+        <article class="currency-account-card"><span class="currency-flag eur">EU</span><small>Euro</small><strong>EUR</strong><div><span>Compra <b>8.540</b></span><span>Venta <b>8.680</b></span></div></article>
+        <article class="currency-account-card"><span class="currency-flag brl">BR</span><small>Real brasileño</small><strong>BRL</strong><div><span>Compra <b>1.320</b></span><span>Venta <b>1.370</b></span></div></article>
+        <article class="currency-account-card active-context"><span class="currency-flag pyg">PY</span><small>Moneda base</small><strong>PYG</strong><div><span>Cliente <b>{% if request.session.selected_client %}Activo{% else %}Sin seleccionar{% endif %}</b></span></div></article>
+      </div>
+      <p class="dashboard-market-note"><span class="material-symbols" aria-hidden="true">info</span>Valores de referencia. Las operaciones se confirman con la cotización vigente.</p>
+    </section>
+
+    <section class="quick-actions" aria-labelledby="quick-actions-heading">
+      <div class="dashboard-section-heading"><div><span>Accesos</span><h2 id="quick-actions-heading">Acciones rápidas</h2></div></div>
+      <div class="quick-actions-grid">
+        {% if 'ADMINISTRADOR' in request.session.roles %}<a href="{% url 'usuarios:list' %}"><span class="quick-icon material-symbols" aria-hidden="true">group</span><span><strong>Gestionar usuarios</strong><small>Crear, editar, asignar roles y dar de baja</small></span><span class="material-symbols" aria-hidden="true">arrow_forward</span></a>{% endif %}
+        <a href="{% url 'consultar_clientes' %}"><span class="quick-icon material-symbols" aria-hidden="true">domain</span><span><strong>Gestionar clientes</strong><small>Registrar, editar y seleccionar el contexto</small></span><span class="material-symbols" aria-hidden="true">arrow_forward</span></a>
+        <a href="{% url 'usuarios:home' %}#cotizaciones"><span class="quick-icon material-symbols" aria-hidden="true">currency_exchange</span><span><strong>Conversor de divisas</strong><small>Simular conversiones de referencia</small></span><span class="material-symbols" aria-hidden="true">arrow_forward</span></a>
+      </div>
+    </section>
+  </div>
+</section>
+{% endblock %}

@@ -134,6 +134,7 @@ def establecer_sesion_oidc(request, claims):
         "email": claims.get("email", ""),
     }
     request.session[SESSION_ROLES] = extraer_roles_sistema(claims)
+    request.session["kc_user"] = claims
     request.session[SESSION_EXPIRA_EN] = expira_en
     request.session.set_expiry(segundos_restantes)
 
@@ -165,5 +166,8 @@ def limpiar_sesion_oidc(request):
         SESSION_USUARIO,
         SESSION_ROLES,
         SESSION_EXPIRA_EN,
+        "kc_user",
+        "kc_access_token",
+        "kc_id_token",
     ):
         request.session.pop(clave, None)

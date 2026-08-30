@@ -1,6 +1,8 @@
 from functools import wraps
 
+from django.contrib import messages
 from django.http import JsonResponse
+from django.shortcuts import redirect, render
 
 from .services.keycloak import (
     ROLES_SISTEMA,
@@ -57,4 +59,31 @@ def requiere_rol(rol_requerido):
 
         return wrapper
 
+    return decorator
+
+
+def requiere_roles_web(*roles_permitidos):
+    """Protege vistas HTML y presenta respuestas apropiadas para navegador."""
+
+    desconocidos = set(roles_permitidos) - ROLES_SISTEMA
+    if desconocidos:
+        raise ValueError(f"Roles de sistema desconocidos: {sorted(desconocidos)}")
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapper(request, *args, **kwargs):
+            if not sesion_oidc_vigente(request):
+                request.session["next"] = request.get_full_path()
+                messages.info(request, "Iniciá sesión para continuar.")
+                return redirect("usuarios:login")
+            roles_usuario = set(request.session.get(SESSION_ROLES, []))
+            if not roles_usuario.intersection(roles_permitidos):
+                return render(
+                    request,
+                    "usuarios/forbidden.html",
+                    {"required_roles": roles_permitidos},
+                    status=403,
+                )
+            return view_func(request, *args, **kwargs)
+        return wrapper
     return decorator

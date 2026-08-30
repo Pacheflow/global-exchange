@@ -38,4 +38,24 @@ urlpatterns = [
         views.segmentar_cliente,
         name='segmentar_cliente'
     ),
+    path(
+        'seleccionar/<int:cliente_id>/',
+        views.seleccionar_cliente,
+        name='seleccionar_cliente'
+    ),
+    path(
+        'deseleccionar/',
+        views.deseleccionar_cliente,
+        name='deseleccionar_cliente'
+    ),
+    path(
+        '<int:cliente_id>/usuarios/',
+        views.asignaciones_cliente,
+        name='asignaciones_cliente'
+    ),
+    path(
+        '<int:cliente_id>/usuarios/<int:asignacion_id>/quitar/',
+        views.quitar_asignacion_cliente,
+        name='quitar_asignacion_cliente'
+    ),
 ]

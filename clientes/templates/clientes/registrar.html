@@ -1,24 +1,11 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Registrar Cliente</title>
-</head>
-<body>
-
-    <h1>Registrar Cliente</h1>
-
-    <form method="POST">
-        {% csrf_token %}
-
-        {{ form.as_p }}
-
-        <button type="submit">Guardar Cliente</button>
-    </form>
-
-    <br>
-
-    <a href="/clientes/">Volver</a>
-
-</body>
-</html>
+{% extends 'usuarios/base.html' %}
+{% block title %}Nuevo cliente · Global Exchange{% endblock %}
+{% block content %}
+<section class="workspace"><div class="content-narrow">
+  <header class="workspace-header workspace-header-stacked"><div class="page-intro"><a class="back-link" href="{% url 'consultar_clientes' %}">← Volver a clientes</a><h1>Nuevo cliente</h1><p>Registrá una persona física o jurídica para comenzar a operar.</p></div></header>
+  <div class="form-surface"><form class="clean-form" method="post" novalidate>{% csrf_token %}
+    {% include 'clientes/partials/form_fields.html' %}
+    <div class="form-buttons"><a class="button button-quiet" href="{% url 'consultar_clientes' %}">Cancelar</a><button class="button button-dark" type="submit"><span class="material-symbols" aria-hidden="true">save</span>Registrar cliente</button></div>
+  </form></div>
+</div></section>
+{% endblock %}

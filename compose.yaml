@@ -60,6 +60,28 @@ services:
       start_period: 30s
     networks: [global_exchange]
 
+  keycloak-config:
+    image: quay.io/keycloak/keycloak:26.7.2
+    container_name: global-exchange-keycloak-config
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "sed 's/\\r$//' /config/configure-admin-client.sh > /tmp/configure-admin-client.sh && exec /bin/sh /tmp/configure-admin-client.sh"
+    environment:
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-global-exchange}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin_dev}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-global-exchange-admin-api}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-global-exchange-admin-dev-secret}
+    volumes:
+      - ./docker/keycloak/configure-admin-client.sh:/config/configure-admin-client.sh:ro
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    networks: [global_exchange]
+
   web:
     build:
       context: .
@@ -79,9 +101,11 @@ services:
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-global-exchange}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-global-exchange-web}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-global-exchange-admin-api}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-global-exchange-admin-dev-secret}
       KEYCLOAK_EXPECTED_ISSUER: ${KEYCLOAK_EXPECTED_ISSUER:-http://localhost:8080/realms/global-exchange}
       BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-http://localhost:8000}
-      OIDC_CALLBACK_URL: ${OIDC_CALLBACK_URL:-http://localhost:8000/usuarios/callback/}
+      OIDC_CALLBACK_URL: ${OIDC_CALLBACK_URL:-http://localhost:8000/callback/}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       OIDC_LOGIN_SUCCESS_URL: ${OIDC_LOGIN_SUCCESS_URL:-}
       OIDC_REGISTRATION_SUCCESS_URL: ${OIDC_REGISTRATION_SUCCESS_URL:-}
@@ -99,6 +123,8 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
+      keycloak-config:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/admin/login/', timeout=3)"]
       interval: 10s
