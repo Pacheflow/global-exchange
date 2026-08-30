@@ -36,6 +36,8 @@ def oidc_required(view):
 
 
 def home(request):
+    if request.session.get("kc_user"):
+        return redirect("usuarios:dashboard")
     return render(request, "usuarios/home.html")
 
 
@@ -81,13 +83,20 @@ def logout(request):
 
 @oidc_required
 def dashboard(request):
-    return render(request, "usuarios/dashboard.html")
+    profile = request.session["kc_user"]
+    display_name = (
+        profile.get("given_name")
+        or profile.get("name")
+        or profile.get("preferred_username")
+        or "Usuario"
+    )
+    return render(request, "usuarios/dashboard.html", {"display_name": display_name})
 
 
 @oidc_required
 def usuarios(request):
     try:
-        rows, error = admin_request("/users?max=100", request.session["kc_access_token"]), None
+        rows, error = admin_request("/users?max=100"), None
     except KeycloakError as exc:
         rows, error = [], str(exc)
     return render(request, "usuarios/user_list.html", {"users": rows, "api_error": error})
@@ -105,37 +114,55 @@ def crear_usuario(request):
             messages.error(request, "Completá usuario, email y una contraseña de al menos 8 caracteres.")
         else:
             try:
-                admin_request("/users", request.session["kc_access_token"], method="POST", payload=payload)
+                admin_request("/users", method="POST", payload=payload)
                 messages.success(request, "Usuario creado. Deberá cambiar su contraseña al ingresar.")
                 return redirect("usuarios:list")
             except KeycloakError as exc:
                 messages.error(request, str(exc))
-    return render(request, "usuarios/user_form.html", {"mode": "create"})
+    form_values = {
+        "username": request.POST.get("username", ""),
+        "first_name": request.POST.get("first_name", ""),
+        "last_name": request.POST.get("last_name", ""),
+        "email": request.POST.get("email", ""),
+    }
+    return render(request, "usuarios/user_form.html", {
+        "mode": "create",
+        "form_values": form_values,
+    })
 
 
 @oidc_required
 def editar_usuario(request, user_id):
     try:
-        user = admin_request(f"/users/{user_id}", request.session["kc_access_token"])
+        user = admin_request(f"/users/{user_id}")
         if request.method == "POST":
             user.update({"email": request.POST.get("email", "").strip(), "firstName": request.POST.get("first_name", "").strip(),
                          "lastName": request.POST.get("last_name", "").strip(), "enabled": request.POST.get("enabled") == "on"})
-            admin_request(f"/users/{user_id}", request.session["kc_access_token"], method="PUT", payload=user)
+            admin_request(f"/users/{user_id}", method="PUT", payload=user)
             messages.success(request, "Usuario actualizado.")
             return redirect("usuarios:list")
     except KeycloakError as exc:
         messages.error(request, str(exc))
         return redirect("usuarios:list")
-    return render(request, "usuarios/user_form.html", {"mode": "edit", "managed_user": user})
+    form_values = {
+        "first_name": user.get("firstName", ""),
+        "last_name": user.get("lastName", ""),
+        "email": user.get("email", ""),
+    }
+    return render(request, "usuarios/user_form.html", {
+        "mode": "edit",
+        "managed_user": user,
+        "form_values": form_values,
+    })
 
 
 @oidc_required
 def baja_usuario(request, user_id):
     if request.method == "POST":
         try:
-            user = admin_request(f"/users/{user_id}", request.session["kc_access_token"])
+            user = admin_request(f"/users/{user_id}")
             user["enabled"] = False
-            admin_request(f"/users/{user_id}", request.session["kc_access_token"], method="PUT", payload=user)
+            admin_request(f"/users/{user_id}", method="PUT", payload=user)
             messages.success(request, "Usuario dado de baja; sus datos fueron conservados.")
         except KeycloakError as exc:
             messages.error(request, str(exc))

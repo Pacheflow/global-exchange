@@ -19,6 +19,13 @@ KEYCLOAK_SERVER_URL = os.getenv(
     "http://localhost:8080",
 )
 
+# URL utilizada únicamente entre contenedores. La URL pública anterior se
+# conserva para las redirecciones que debe abrir el navegador del usuario.
+KEYCLOAK_INTERNAL_URL = os.getenv(
+    "KEYCLOAK_INTERNAL_URL",
+    KEYCLOAK_SERVER_URL,
+)
+
 KEYCLOAK_REALM = os.getenv(
     "KEYCLOAK_REALM",
     "global-exchange",
@@ -27,6 +34,17 @@ KEYCLOAK_REALM = os.getenv(
 KEYCLOAK_CLIENT_ID = os.getenv(
     "KEYCLOAK_CLIENT_ID",
     "global-exchange-web",
+)
+
+# Cliente confidencial exclusivo del backend para la Admin REST API. Nunca se
+# expone al navegador ni se almacena en la sesión del usuario.
+KEYCLOAK_ADMIN_CLIENT_ID = os.getenv(
+    "KEYCLOAK_ADMIN_CLIENT_ID",
+    "global-exchange-admin-api",
+)
+KEYCLOAK_ADMIN_CLIENT_SECRET = os.getenv(
+    "KEYCLOAK_ADMIN_CLIENT_SECRET",
+    "global-exchange-admin-dev-secret",
 )
 
 from pathlib import Path
@@ -52,6 +70,10 @@ ALLOWED_HOSTS = [host.strip() for host in os.getenv(
 # Application definition
 
 INSTALLED_APPS = [
+    # Material Design 3 components. django-cotton resolves the <c-...>
+    # component tags used by the project templates.
+    "material",
+    "django_cotton",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",

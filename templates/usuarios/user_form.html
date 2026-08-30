@@ -1,59 +1,14 @@
-{% extends 'usuarios/base.html' %}{% block title %}{% if mode == 'create' %}Nuevo{% else %}Editar{% endif %} usuario · Global Exchange{% endblock %}{% block content %}
-<section class="form-page">
-  <a class="back" href="{% url 'usuarios:list' %}">← Volver a usuarios</a>
-  <div class="form-card card">
-    <span class="eyebrow"><i></i> CUENTA KEYCLOAK</span>
-    <h1>
-      {% if mode == 'create' %}Crear usuario{% else %}Editar usuario{% endif %}
-    </h1>
-    <p>
-      {% if mode == 'create' %}La contraseña inicial será temporal para proteger
-      la cuenta.{% else %}Actualizá solo los datos permitidos.{% endif %}
-    </p>
-    <form method="post">
-      {% csrf_token %}
-      <div class="form-grid">
-        {% if mode == 'create' %}<label
-          >Nombre de usuario<input
-            name="username"
-            required
-            autocomplete="off"
-            value="{{ request.POST.username }}" /></label
-        >{% endif %}<label
-          >Email<input
-            type="email"
-            name="email"
-            required
-            value="{{ managed_user.email|default:request.POST.email }}" /></label
-        ><label
-          >Nombre<input
-            name="first_name"
-            value="{{ managed_user.firstName|default:request.POST.first_name }}" /></label
-        ><label
-          >Apellido<input
-            name="last_name"
-            value="{{ managed_user.lastName|default:request.POST.last_name }}" /></label
-        >{% if mode == 'create' %}<label class="wide"
-          >Contraseña temporal<input
-            type="password"
-            name="password"
-            minlength="8"
-            required
-            autocomplete="new-password"
-          /><small>Mínimo 8 caracteres</small></label
-        >{% else %}<label class="toggle wide"
-          ><input
-            type="checkbox"
-            name="enabled"
-            {% if managed_user.enabled %}checked{% endif %}
-          /><span></span> Usuario habilitado</label
-        >{% endif %}
-      </div>
-      <div class="form-actions">
-        <a class="btn ghost" href="{% url 'usuarios:list' %}">Cancelar</a
-        ><button class="btn primary">Guardar usuario</button>
-      </div>
-    </form>
-  </div>
-</section>
+{% extends 'usuarios/base.html' %}
+{% block title %}{% if mode == 'create' %}Nuevo{% else %}Editar{% endif %} usuario · Global Exchange{% endblock %}
+{% block content %}
+<section class="workspace"><div class="content-narrow">
+  <header class="workspace-header"><div class="page-intro"><h1>{% if mode == 'create' %}Nuevo usuario{% else %}Editar usuario{% endif %}</h1><p>{% if mode == 'create' %}Creá una identidad administrada por Keycloak.{% else %}Actualizá los datos de la cuenta.{% endif %}</p></div></header>
+  <c-card.outlined class="form-surface material-surface"><form method="post" class="clean-form">{% csrf_token %}
+    {% if mode == 'create' %}<c-forms.text.outlined id="username" name="username" value="{{ form_values.username }}" required leading_icon="person">Usuario</c-forms.text.outlined>{% endif %}
+    <div class="two-columns"><c-forms.text.outlined id="first_name" name="first_name" value="{{ form_values.first_name }}">Nombre</c-forms.text.outlined><c-forms.text.outlined id="last_name" name="last_name" value="{{ form_values.last_name }}">Apellido</c-forms.text.outlined></div>
+    <c-forms.text.outlined id="email" type="email" name="email" value="{{ form_values.email }}" required leading_icon="mail">Email</c-forms.text.outlined>
+    {% if mode == 'create' %}<c-forms.text.outlined id="password" type="password" name="password" required leading_icon="lock" help_text="Mínimo 8 caracteres; el usuario deberá cambiarla al ingresar.">Contraseña temporal</c-forms.text.outlined>{% else %}<c-forms.checkbox id="enabled" name="enabled" :checked="managed_user.enabled">Usuario habilitado</c-forms.checkbox>{% endif %}
+    <div class="form-buttons"><a class="button button-quiet" href="{% url 'usuarios:list' %}"><span class="material-symbols" aria-hidden="true">close</span>Cancelar</a><c-button.filled type="submit" icon="save">Guardar</c-button.filled></div>
+  </form></c-card.outlined>
+</div></section>
 {% endblock %}

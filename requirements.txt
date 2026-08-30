@@ -5,3 +5,5 @@ psycopg-binary==3.3.4
 sqlparse==0.6.0
 tzdata==2026.3
 python-dotenv==1.2.3
+django-cotton==2.7.2
+django-material @ git+https://github.com/viewflow/django-material.git@80dc63d05677a7714ec95a5230acc643af994fda
