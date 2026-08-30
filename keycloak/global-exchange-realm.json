@@ -56,7 +56,8 @@
         "composites": {
           "realm": [
             "offline_access",
-            "uma_authorization"
+            "uma_authorization",
+            "USUARIO"
           ],
           "client": {
             "account": [
@@ -788,7 +789,8 @@
         "oauth2.device.authorization.grant.enabled": "false",
         "display.on.consent.screen": "false",
         "backchannel.logout.revoke.offline.tokens": "false",
-        "dpop.bound.access.tokens": "false"
+        "dpop.bound.access.tokens": "false",
+        "pkce.code.challenge.method": "S256"
       },
       "authenticationFlowBindingOverrides": {},
       "fullScopeAllowed": true,
@@ -2437,6 +2439,7 @@
           "userSetupAllowed": false
         },
         {
+          "authenticatorConfig": "registration-password-config",
           "authenticator": "registration-password-action",
           "authenticatorFlow": false,
           "requirement": "REQUIRED",
@@ -2536,6 +2539,13 @@
       "alias": "create unique user config",
       "config": {
         "require.password.update.after.registration": "false"
+      }
+    },
+    {
+      "id": "b5a9e6cb-d16e-4e40-8aeb-fb42466fdc09",
+      "alias": "registration-password-config",
+      "config": {
+        "always_set_password_on_register_form": "true"
       }
     },
     {
