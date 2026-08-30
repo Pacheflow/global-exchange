@@ -8,10 +8,4 @@ urlpatterns = [
     path("registro/", views.registro, name="registro"),
     path("login/", views.login, name="login"),
     path("callback/", views.callback, name="callback"),
-    path("perfil/", views.perfil_usuario, name="perfil_usuario"),
-    path(
-        "acceso-administrador/",
-        views.acceso_administrador,
-        name="acceso_administrador",
-    ),
 ]
