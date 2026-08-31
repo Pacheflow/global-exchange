@@ -3,6 +3,7 @@ import hashlib
 import secrets
 import time
 import json
+from typing import cast
 from urllib.parse import urlencode
 
 import requests
@@ -11,7 +12,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from jwt.exceptions import InvalidTokenError
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from .services.keycloak import asignar_rol_usuario
 from .decorators import requiere_autenticacion, requiere_rol, requiere_roles_web
 from .keycloak import (
@@ -126,6 +127,7 @@ def _respuesta_error_oidc(mensaje, status):
     return JsonResponse({"error": mensaje}, status=status)
 
 
+@require_GET
 def registro(request):
     """
     Redirige al usuario al formulario de registro administrado por Keycloak.
@@ -138,6 +140,7 @@ def registro(request):
     return _iniciar_flujo_oidc(request, FLUJO_REGISTRO, registration_endpoint)
 
 
+@require_GET
 def login(request):
     """
     Inicia sesión utilizando Keycloak mediante Authorization Code Flow + PKCE.
@@ -150,6 +153,7 @@ def login(request):
     return _iniciar_flujo_oidc(request, FLUJO_LOGIN, authorization_endpoint)
 
 
+@require_GET
 def callback(request):
     """
     Recibe la respuesta de Keycloak después del login.
@@ -195,6 +199,9 @@ def callback(request):
             timeout=10,
         )
     except requests.RequestException:
+        # SessionMiddleware no guarda sesiones para respuestas 5xx. Persistir
+        # aquí garantiza que el state consumido no pueda reutilizarse.
+        request.session.save()
         return _respuesta_error_oidc("Keycloak no está disponible", 502)
 
     if response.status_code != 200:
@@ -204,8 +211,9 @@ def callback(request):
         tokens = response.json()
         claims = validar_access_token(tokens.get("access_token"))
         establecer_sesion_oidc(request, claims)
-        request.session["kc_access_token"] = tokens["access_token"]
-        request.session["kc_id_token"] = tokens.get("id_token")
+        id_token = tokens.get("id_token")
+        if id_token:
+            request.session["kc_id_token"] = id_token
     except (AttributeError, TypeError, ValueError, InvalidTokenError):
         return _respuesta_error_oidc("Keycloak devolvió un token inválido", 400)
 
@@ -235,6 +243,7 @@ def callback(request):
 
 
 @requiere_autenticacion
+@require_GET
 def perfil_usuario(request):
     """
     Devuelve la información del usuario autenticado y sus roles.
@@ -249,6 +258,7 @@ def perfil_usuario(request):
 
 
 @requiere_rol("ADMINISTRADOR")
+@require_GET
 def acceso_administrador(request):
     """Vista mínima para comprobar autorización backend por rol."""
 
@@ -260,12 +270,14 @@ def acceso_administrador(request):
     )
 
 
+@require_GET
 def home(request):
     if request.session.get("kc_user"):
         return redirect("usuarios:dashboard")
     return render(request, "usuarios/home.html")
 
 
+@require_GET
 def logout(request):
     id_token = request.session.get("kc_id_token")
     request.session.flush()
@@ -283,6 +295,7 @@ def logout(request):
 
 
 @requiere_roles_web("ADMINISTRADOR", "CAJERO", "ANALISTA_CAMBIARIO", "USUARIO")
+@require_GET
 def dashboard(request):
     profile = request.session["kc_user"]
     display_name = (
@@ -295,6 +308,7 @@ def dashboard(request):
 
 
 @requiere_roles_web("ADMINISTRADOR")
+@require_GET
 def usuarios(request):
     try:
         rows, error = admin_request("/users?max=100"), None
@@ -304,6 +318,7 @@ def usuarios(request):
 
 
 @requiere_roles_web("ADMINISTRADOR")
+@require_http_methods(["GET", "POST"])
 def crear_usuario(request):
     if request.method == "POST":
         password = request.POST.get("password", "")
@@ -321,7 +336,8 @@ def crear_usuario(request):
         else:
             try:
                 admin_request("/users", method="POST", payload=payload)
-                created = admin_request(f"/users?username={payload['username']}&exact=true") or []
+                query = urlencode({"username": payload["username"], "exact": "true"})
+                created = admin_request(f"/users?{query}") or []
                 if created:
                     actualizar_roles_usuario(created[0]["id"], request.POST.getlist("roles") or ["USUARIO"])
                 messages.success(request, "Usuario creado con sus roles de negocio.")
@@ -338,9 +354,10 @@ def crear_usuario(request):
 
 
 @requiere_roles_web("ADMINISTRADOR")
+@require_http_methods(["GET", "POST"])
 def editar_usuario(request, user_id):
     try:
-        user = admin_request(f"/users/{user_id}")
+        user = cast(dict[str, object], admin_request(f"/users/{user_id}"))
         if request.method == "POST":
             user.update({
                 "email": request.POST.get("email", "").strip(),
@@ -371,10 +388,11 @@ def editar_usuario(request, user_id):
 
 
 @requiere_roles_web("ADMINISTRADOR")
+@require_POST
 def baja_usuario(request, user_id):
     if request.method == "POST":
         try:
-            user = admin_request(f"/users/{user_id}")
+            user = cast(dict[str, object], admin_request(f"/users/{user_id}"))
             user["enabled"] = False
             admin_request(f"/users/{user_id}", method="PUT", payload=user)
             messages.success(request, "Usuario dado de baja; sus datos fueron conservados.")
@@ -384,6 +402,7 @@ def baja_usuario(request, user_id):
 
 
 @requiere_roles_web("ADMINISTRADOR", "CAJERO", "ANALISTA_CAMBIARIO", "USUARIO")
+@require_GET
 def clientes(request):
     return redirect("consultar_clientes")
 

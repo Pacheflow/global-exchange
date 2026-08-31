@@ -1,5 +1,5 @@
 #!/bin/sh
-+set -eu
+set -eu
 echo "Esperando PostgreSQL..."
 
 python <<'PY'
@@ -29,5 +29,10 @@ PY
 echo "Aplicando migraciones..."
 
 python manage.py migrate --noinput
+
+if [ "${DJANGO_COLLECTSTATIC:-false}" = "true" ]; then
+    echo "Recolectando archivos estaticos..."
+    python manage.py collectstatic --noinput
+fi
 
 exec "$@"

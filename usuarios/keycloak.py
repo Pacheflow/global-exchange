@@ -74,11 +74,24 @@ def admin_access_token():
         "client_id": settings.KEYCLOAK_ADMIN_CLIENT_ID,
         "client_secret": settings.KEYCLOAK_ADMIN_CLIENT_SECRET,
     })
-    access_token = tokens["access_token"]
+    if not isinstance(tokens, dict):
+        raise KeycloakError("Keycloak devolvió una respuesta de token inválida.")
+
+    access_token = tokens.get("access_token")
+    if not isinstance(access_token, str) or not access_token:
+        raise KeycloakError("Keycloak devolvió una respuesta de token inválida.")
+
+    try:
+        expires_in = int(tokens.get("expires_in", 60))
+    except (TypeError, ValueError) as exc:
+        raise KeycloakError(
+            "Keycloak devolvió una respuesta de token inválida."
+        ) from exc
+
     # Renovar con margen evita que el token venza durante una operación.
     _admin_token_cache.update({
         "access_token": access_token,
-        "expires_at": now + max(int(tokens.get("expires_in", 60)) - 30, 1),
+        "expires_at": now + max(expires_in - 30, 1),
     })
     return access_token
 

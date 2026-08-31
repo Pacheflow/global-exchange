@@ -3,12 +3,15 @@ import hashlib
 import json
 import time
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 import jwt
+import requests
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.conf import settings
+from django.http import HttpResponseRedirect
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from jwt.exceptions import (
@@ -28,12 +31,18 @@ from .services.keycloak import (
     extraer_roles_sistema,
     validar_access_token,
 )
+from .keycloak import KeycloakError
 from .views import FLUJO_LOGIN, FLUJO_REGISTRO, OIDC_FLOWS_SESSION_KEY
 
 
 class FlujoOIDCMixin:
+    client: Any
+
     def iniciar_flujo(self, nombre_url):
-        response = self.client.get(reverse(nombre_url))
+        response = cast(
+            HttpResponseRedirect,
+            self.client.get(reverse(nombre_url)),
+        )
         params = parse_qs(urlsplit(response.url).query)
         state = params["state"][0]
         flow = self.client.session[OIDC_FLOWS_SESSION_KEY][state]
@@ -211,6 +220,37 @@ class LoginUsuarioTests(FlujoOIDCMixin, TestCase):
         session = self.client.session
         self.assertTrue(session[SESSION_AUTENTICADO])
         self.assertGreater(session[SESSION_EXPIRA_EN], time.time())
+        self.assertNotIn("kc_access_token", session)
+
+    @patch("usuarios.views.requests.post")
+    def test_callback_informa_keycloak_no_disponible(self, mock_post):
+        _, _, state, _ = self.iniciar_flujo("usuarios:login")
+        mock_post.side_effect = requests.RequestException("sin conexión")
+
+        response = self.client.get(
+            reverse("usuarios:callback"),
+            {"code": "codigo-prueba", "state": state},
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["error"], "Keycloak no está disponible")
+        self.assertNotIn(OIDC_FLOWS_SESSION_KEY, self.client.session)
+
+    @patch("usuarios.views.requests.post")
+    def test_callback_informa_rechazo_del_intercambio(self, mock_post):
+        _, _, state, _ = self.iniciar_flujo("usuarios:login")
+        mock_post.return_value.status_code = 400
+
+        response = self.client.get(
+            reverse("usuarios:callback"),
+            {"code": "codigo-rechazado", "state": state},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["error"], "No se pudo autenticar con Keycloak"
+        )
+        self.assertNotIn(SESSION_AUTENTICADO, self.client.session)
 
     @patch("usuarios.views.validar_access_token")
     @patch("usuarios.views.requests.post")
@@ -255,9 +295,16 @@ class LoginUsuarioTests(FlujoOIDCMixin, TestCase):
         mock_post.return_value.json.return_value = {"access_token": "token-prueba"}
         mock_validar_token.return_value = self.claims_validos()
 
-        response = self.client.get(
-            reverse("usuarios:callback"),
-            {"code": "codigo-prueba", "state": state, "next": "https://malicioso"},
+        response = cast(
+            HttpResponseRedirect,
+            self.client.get(
+                reverse("usuarios:callback"),
+                {
+                    "code": "codigo-prueba",
+                    "state": state,
+                    "next": "https://malicioso",
+                },
+            ),
         )
 
         self.assertRedirects(
@@ -268,6 +315,8 @@ class LoginUsuarioTests(FlujoOIDCMixin, TestCase):
 
 
 class AutorizacionBackendTests(TestCase):
+    client: Any
+
     def autenticar_con_roles(self, roles, expira_en=None):
         session = self.client.session
         session[SESSION_AUTENTICADO] = True
@@ -318,6 +367,101 @@ class AutorizacionBackendTests(TestCase):
 
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()["error"], "Autenticación requerida")
+
+
+class MetodosHTTPYLogoutTests(TestCase):
+    client: Any
+
+    def autenticar_con_roles(self, roles):
+        session = self.client.session
+        session[SESSION_AUTENTICADO] = True
+        session[SESSION_USUARIO] = {
+            "sub": "usuario-metodos",
+            "username": "usuario.metodos",
+            "email": "metodos@example.com",
+        }
+        session[SESSION_ROLES] = roles
+        session[SESSION_EXPIRA_EN] = int(time.time()) + 300
+        session["kc_user"] = {
+            "sub": "usuario-metodos",
+            "preferred_username": "usuario.metodos",
+        }
+        session.save()
+
+    def test_vistas_publicas_de_lectura_rechazan_post(self):
+        urls = (
+            reverse("usuarios:home"),
+            reverse("usuarios:login"),
+            reverse("usuarios:registro"),
+            reverse("usuarios:callback"),
+            reverse("usuarios:logout"),
+        )
+
+        for url in urls:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.post(url).status_code, 405)
+
+    def test_vistas_protegidas_rechazan_metodos_no_soportados(self):
+        self.autenticar_con_roles(["ADMINISTRADOR"])
+        urls_solo_get = (
+            reverse("usuarios:dashboard"),
+            reverse("usuarios:list"),
+            reverse("usuarios:clients"),
+            reverse("usuarios:perfil_usuario"),
+            reverse("usuarios:acceso_administrador"),
+        )
+
+        for url in urls_solo_get:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.post(url).status_code, 405)
+
+        self.assertEqual(self.client.put(reverse("usuarios:create")).status_code, 405)
+        self.assertEqual(
+            self.client.put(reverse("usuarios:edit", args=["usuario-1"])).status_code,
+            405,
+        )
+        self.assertEqual(
+            self.client.get(reverse("usuarios:disable", args=["usuario-1"])).status_code,
+            405,
+        )
+
+    def test_gestion_de_usuarios_rechaza_anonimos_y_no_administradores(self):
+        rutas = (
+            ("get", reverse("usuarios:list")),
+            ("get", reverse("usuarios:create")),
+            ("get", reverse("usuarios:edit", args=["usuario-1"])),
+            ("post", reverse("usuarios:disable", args=["usuario-1"])),
+        )
+
+        for metodo, url in rutas:
+            with self.subTest(tipo="anonimo", url=url):
+                response = getattr(self.client, metodo)(url)
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response.url, reverse("usuarios:login"))
+
+        self.autenticar_con_roles(["USUARIO"])
+        for metodo, url in rutas:
+            with self.subTest(tipo="sin_rol", url=url):
+                self.assertEqual(getattr(self.client, metodo)(url).status_code, 403)
+
+    def test_logout_limpia_sesion_y_redirige_a_keycloak(self):
+        self.autenticar_con_roles(["USUARIO"])
+        session = self.client.session
+        session["kc_id_token"] = "id-token-prueba"
+        session.save()
+
+        response = cast(
+            HttpResponseRedirect,
+            self.client.get(reverse("usuarios:logout")),
+        )
+        params = parse_qs(urlsplit(response.url).query)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/protocol/openid-connect/logout", response.url)
+        self.assertEqual(params["id_token_hint"], ["id-token-prueba"])
+        self.assertEqual(params["client_id"], [settings.KEYCLOAK_CLIENT_ID])
+        self.assertNotIn(SESSION_AUTENTICADO, self.client.session)
+        self.assertNotIn(SESSION_ROLES, self.client.session)
 
 
 class RolesKeycloakTests(TestCase):
@@ -455,6 +599,127 @@ class ValidacionTokenTests(TestCase):
             validar_access_token(token)
 
 
+class GestionUsuariosBackendTests(TestCase):
+    client: Any
+
+    def setUp(self):
+        session = self.client.session
+        session[SESSION_AUTENTICADO] = True
+        session[SESSION_USUARIO] = {
+            "sub": "admin-gestion",
+            "username": "admin.gestion",
+            "email": "admin@example.com",
+        }
+        session[SESSION_ROLES] = ["ADMINISTRADOR"]
+        session[SESSION_EXPIRA_EN] = int(time.time()) + 300
+        session["kc_user"] = {
+            "sub": "admin-gestion",
+            "preferred_username": "admin.gestion",
+        }
+        session.save()
+
+    @patch("usuarios.views.admin_request")
+    def test_listado_renderiza_usuarios_de_keycloak(self, mock_admin_request):
+        mock_admin_request.return_value = [
+            {
+                "id": "kc-user-1",
+                "username": "usuario.listado",
+                "email": "listado@example.com",
+                "enabled": True,
+            }
+        ]
+
+        response = self.client.get(reverse("usuarios:list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "usuario.listado")
+        mock_admin_request.assert_called_once_with("/users?max=100")
+
+    @patch("usuarios.views.admin_request")
+    def test_listado_informa_error_controlado_de_keycloak(self, mock_admin_request):
+        mock_admin_request.side_effect = KeycloakError("Keycloak no disponible")
+
+        response = self.client.get(reverse("usuarios:list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Keycloak no disponible")
+
+    @patch("usuarios.views.actualizar_roles_usuario")
+    @patch("usuarios.views.admin_request")
+    def test_creacion_codifica_busqueda_y_asigna_roles(
+        self, mock_admin_request, mock_actualizar_roles
+    ):
+        mock_admin_request.side_effect = [None, [{"id": "kc-user-creado"}]]
+
+        response = self.client.post(
+            reverse("usuarios:create"),
+            {
+                "username": "usuario+qa@example.com",
+                "email": "usuario.qa@example.com",
+                "first_name": "Usuario",
+                "last_name": "QA",
+                "password": "temporal-segura",
+                "roles": ["CAJERO"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        primera_llamada, segunda_llamada = mock_admin_request.call_args_list
+        self.assertEqual(primera_llamada.args[0], "/users")
+        self.assertEqual(primera_llamada.kwargs["method"], "POST")
+        self.assertTrue(
+            primera_llamada.kwargs["payload"]["credentials"][0]["temporary"]
+        )
+        self.assertEqual(
+            segunda_llamada.args[0],
+            "/users?username=usuario%2Bqa%40example.com&exact=true",
+        )
+        mock_actualizar_roles.assert_called_once_with("kc-user-creado", ["CAJERO"])
+
+    @patch("usuarios.views.roles_usuario", return_value=["USUARIO"])
+    @patch("usuarios.views.admin_request")
+    def test_edicion_get_usa_objeto_de_keycloak(
+        self, mock_admin_request, mock_roles_usuario
+    ):
+        mock_admin_request.return_value = {
+            "id": "kc-user-editar",
+            "username": "usuario.editar",
+            "email": "editar@example.com",
+            "firstName": "Nombre",
+            "lastName": "Apellido",
+            "enabled": True,
+        }
+
+        response = self.client.get(
+            reverse("usuarios:edit", args=["kc-user-editar"])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "editar@example.com")
+        mock_admin_request.assert_called_once_with("/users/kc-user-editar")
+        mock_roles_usuario.assert_called_once_with("kc-user-editar")
+
+    @patch("usuarios.views.admin_request")
+    def test_baja_deshabilita_sin_eliminar_usuario(self, mock_admin_request):
+        usuario = {
+            "id": "kc-user-baja",
+            "username": "usuario.baja",
+            "enabled": True,
+        }
+        mock_admin_request.side_effect = [usuario, None]
+
+        response = self.client.post(
+            reverse("usuarios:disable", args=["kc-user-baja"])
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(mock_admin_request.call_count, 2)
+        actualizacion = mock_admin_request.call_args_list[1]
+        self.assertEqual(actualizacion.args[0], "/users/kc-user-baja")
+        self.assertEqual(actualizacion.kwargs["method"], "PUT")
+        self.assertFalse(actualizacion.kwargs["payload"]["enabled"])
+
+
 class ConfiguracionRealmTests(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -528,6 +793,8 @@ class ConfiguracionRealmTests(TestCase):
         )
 
 class AsignarRolTests(TestCase):
+    client: Any
+
     def _autenticar_como(self, roles):
         session = self.client.session
         session[SESSION_AUTENTICADO] = True

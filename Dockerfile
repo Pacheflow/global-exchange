@@ -18,7 +18,9 @@ RUN apt-get update \
 COPY --chown=django:django . .
 RUN sed -i 's/\r$//' /app/docker/entrypoint.sh \
     && cp /app/docker/entrypoint.sh /usr/local/bin/global-exchange-entrypoint \
-    && chmod +x /usr/local/bin/global-exchange-entrypoint
+    && chmod +x /usr/local/bin/global-exchange-entrypoint \
+    && mkdir -p /app/staticfiles \
+    && chown django:django /app/staticfiles
 USER django
 EXPOSE 8000
 ENTRYPOINT ["/usr/local/bin/global-exchange-entrypoint"]

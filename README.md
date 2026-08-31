@@ -104,10 +104,72 @@ http://localhost:8080
 Para ejecutar comandos Django:
 
 ```powershell
+docker compose exec web python manage.py check
+docker compose exec web python manage.py makemigrations --check --dry-run
 docker compose exec web python manage.py migrate
 docker compose exec web python manage.py test
-docker compose exec web python manage.py createsuperuser
 ```
+
+## Fuente de verdad del entorno de desarrollo
+
+El entorno oficial y reproducible del proyecto es Docker Compose. Django,
+PostgreSQL, Keycloak y Mailpit deben ejecutarse como servicios del mismo entorno.
+
+El comando oficial para ejecutar la suite completa es:
+
+```powershell
+docker compose exec web python manage.py test
+```
+
+Al ejecutarlo, Django utiliza el host interno `postgres:5432`, crea la base temporal
+de pruebas en el PostgreSQL del contenedor y la elimina al finalizar.
+
+No se debe asumir que `python manage.py test` ejecutado directamente desde Windows
+es equivalente. Una configuración local con `DB_HOST=localhost` puede conectarse a
+un PostgreSQL instalado en Windows y producir resultados distintos a los de la
+aplicación ejecutada con Docker.
+
+Para automatización o terminales sin TTY se puede usar la variante:
+
+```powershell
+docker compose exec -T web python manage.py test
+```
+
+Las cuentas de la aplicación se administran mediante Keycloak. No es necesario
+crear superusuarios de Django para utilizar Global Exchange.
+
+## Ambiente de producción local
+
+El ambiente productivo está separado del Compose de desarrollo. Utiliza
+Gunicorn, `DEBUG=false`, archivos estáticos recolectados y servidos mediante
+WhiteNoise, PostgreSQL persistente y Keycloak iniciado sin el perfil `start-dev`.
+
+1. Copiar `.env.production.example` como `.env.production`.
+2. Reemplazar todos los valores `CAMBIAR_*` por secretos propios.
+3. Detener el ambiente de desarrollo si está usando los puertos 8000, 8080 y
+   8025. Este paso no elimina contenedores ni volúmenes:
+
+```powershell
+docker compose stop
+```
+
+4. Construir y levantar producción:
+
+```powershell
+docker compose --env-file .env.production -f compose.prod.yaml up --build -d
+```
+
+5. Verificar el ambiente:
+
+```powershell
+docker compose --env-file .env.production -f compose.prod.yaml ps
+docker compose --env-file .env.production -f compose.prod.yaml exec web python manage.py check
+docker compose --env-file .env.production -f compose.prod.yaml exec web python manage.py makemigrations --check --dry-run
+```
+
+La demostración local utiliza HTTP. Para desplegar detrás de HTTPS deben
+activarse las opciones seguras indicadas en `.env.production.example` y
+configurarse los hosts, orígenes CSRF y URLs públicas reales.
 
 Para detener los contenedores conservando los datos:
 
