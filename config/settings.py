@@ -11,13 +11,19 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 import os
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 load_dotenv()
 
-KEYCLOAK_SERVER_URL = os.getenv(
-    "KEYCLOAK_SERVER_URL",
-    "http://localhost:8080",
-)
+DJANGO_ENVIRONMENT = os.getenv("DJANGO_ENVIRONMENT", "development").lower()
+
+KEYCLOAK_PUBLIC_URL = os.getenv(
+    "KEYCLOAK_PUBLIC_URL",
+    os.getenv("KEYCLOAK_SERVER_URL", "http://localhost:8080"),
+).rstrip("/")
+
+# Alias temporal para conservar compatibilidad con configuraciones existentes.
+KEYCLOAK_SERVER_URL = KEYCLOAK_PUBLIC_URL
 
 KEYCLOAK_INTERNAL_URL = os.getenv(
     "KEYCLOAK_INTERNAL_URL",
@@ -33,6 +39,55 @@ KEYCLOAK_CLIENT_ID = os.getenv(
     "KEYCLOAK_CLIENT_ID",
     "global-exchange-web",
 )
+
+KEYCLOAK_ADMIN_CLIENT_ID = os.getenv(
+    "KEYCLOAK_ADMIN_CLIENT_ID", "global-exchange-admin-api"
+)
+KEYCLOAK_ADMIN_CLIENT_SECRET = os.getenv(
+    "KEYCLOAK_ADMIN_CLIENT_SECRET", "global-exchange-admin-dev-secret"
+)
+
+KEYCLOAK_EXPECTED_ISSUER = os.getenv(
+    "KEYCLOAK_EXPECTED_ISSUER",
+    f"{KEYCLOAK_PUBLIC_URL}/realms/{KEYCLOAK_REALM}",
+).rstrip("/")
+
+BACKEND_PUBLIC_URL = os.getenv(
+    "BACKEND_PUBLIC_URL",
+    "http://localhost:8000",
+).rstrip("/")
+
+OIDC_CALLBACK_URL = os.getenv(
+    "OIDC_CALLBACK_URL",
+    f"{BACKEND_PUBLIC_URL}/callback/",
+)
+
+# Destinos fijos y opcionales para el frontend separado. Mientras estén vacíos,
+# el callback responde JSON y nunca acepta destinos arbitrarios del navegador.
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000").rstrip("/")
+OIDC_LOGIN_SUCCESS_URL = os.getenv("OIDC_LOGIN_SUCCESS_URL", "")
+OIDC_REGISTRATION_SUCCESS_URL = os.getenv("OIDC_REGISTRATION_SUCCESS_URL", "")
+OIDC_ERROR_URL = os.getenv("OIDC_ERROR_URL", "")
+OIDC_FLOW_MAX_AGE_SECONDS = int(os.getenv("OIDC_FLOW_MAX_AGE_SECONDS", "600"))
+
+# Cookies de sesión preparadas para un frontend separado. Los valores seguros
+# para HTTPS pueden activarse por entorno sin habilitar CORS en esta etapa.
+SESSION_COOKIE_HTTPONLY = os.getenv("SESSION_COOKIE_HTTPONLY", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+CSRF_COOKIE_SECURE = os.getenv("CSRF_COOKIE_SECURE", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 from pathlib import Path
 
@@ -53,10 +108,24 @@ ALLOWED_HOSTS = [host.strip() for host in os.getenv(
     "DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1"
 ).split(",") if host.strip()]
 
+if DJANGO_ENVIRONMENT == "production":
+    if SECRET_KEY == "django-dev-only-change-me":
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY debe configurarse para produccion."
+        )
+    if DEBUG:
+        raise ImproperlyConfigured("DJANGO_DEBUG debe ser false en produccion.")
+    if not ALLOWED_HOSTS:
+        raise ImproperlyConfigured(
+            "DJANGO_ALLOWED_HOSTS debe configurarse para produccion."
+        )
+
 
 # Application definition
 
 INSTALLED_APPS = [
+    "material",
+    "django_cotton",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -64,6 +133,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "usuarios",
+    "clientes",
 ]
 
 MIDDLEWARE = [
@@ -81,7 +151,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -133,9 +203,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Asuncion'
 
 USE_I18N = True
 
@@ -146,6 +216,45 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+if DJANGO_ENVIRONMENT == "production":
+    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": (
+                "whitenoise.storage.CompressedManifestStaticFilesStorage"
+            ),
+        },
+    }
+    CSRF_TRUSTED_ORIGINS = [
+        origin.strip()
+        for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
+    SECURE_SSL_REDIRECT = os.getenv(
+        "DJANGO_SECURE_SSL_REDIRECT", "false"
+    ).lower() in {"1", "true", "yes"}
+    SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
+    SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "same-origin"
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {
+            "console": {"class": "logging.StreamHandler"},
+        },
+        "root": {
+            "handlers": ["console"],
+            "level": os.getenv("DJANGO_LOG_LEVEL", "INFO"),
+        },
+    }
 
 
 # Email
@@ -153,6 +262,25 @@ STATIC_URL = 'static/'
 
 MAILERS = {
     'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+        'BACKEND': (
+            'django.core.mail.backends.smtp.EmailBackend'
+            if DJANGO_ENVIRONMENT == "production"
+            else 'django.core.mail.backends.console.EmailBackend'
+        ),
+        'OPTIONS': (
+            {
+                'host': os.getenv("EMAIL_HOST", "mailpit"),
+                'port': int(os.getenv("EMAIL_PORT", "1025")),
+                'use_tls': os.getenv("EMAIL_USE_TLS", "false").lower()
+                in {"1", "true", "yes"},
+            }
+            if DJANGO_ENVIRONMENT == "production"
+            else {}
+        ),
     },
 }
+
+if DJANGO_ENVIRONMENT == "production":
+    DEFAULT_FROM_EMAIL = os.getenv(
+        "DEFAULT_FROM_EMAIL", "noreply@globalexchange.local"
+    )

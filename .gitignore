@@ -3,6 +3,7 @@
 
 # Variables de entorno
 .env
+.env.production
 
 # Python
 __pycache__/

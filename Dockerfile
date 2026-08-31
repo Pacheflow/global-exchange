@@ -8,10 +8,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 RUN addgroup --system django && adduser --system --ingroup django django
 COPY requirements.txt ./
-RUN python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y git \
+    && python -m pip install --upgrade pip \
+    && python -m pip install -r requirements.txt \
+    && apt-get purge -y git \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 COPY --chown=django:django . .
-RUN cp /app/docker/entrypoint.sh /usr/local/bin/global-exchange-entrypoint \
-    && chmod +x /usr/local/bin/global-exchange-entrypoint
+RUN sed -i 's/\r$//' /app/docker/entrypoint.sh \
+    && cp /app/docker/entrypoint.sh /usr/local/bin/global-exchange-entrypoint \
+    && chmod +x /usr/local/bin/global-exchange-entrypoint \
+    && mkdir -p /app/staticfiles \
+    && chown django:django /app/staticfiles
 USER django
 EXPOSE 8000
 ENTRYPOINT ["/usr/local/bin/global-exchange-entrypoint"]

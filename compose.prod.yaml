@@ -1,49 +1,46 @@
-name: global-exchange
+name: global-exchange-production
 
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: global-exchange-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME:-global_exchange}
-      POSTGRES_USER: ${DB_USER:-global_exchange}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-global_exchange_dev}
+      POSTGRES_DB: ${DB_NAME:?DB_NAME es obligatorio}
+      POSTGRES_USER: ${DB_USER:?DB_USER es obligatorio}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatorio}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_prod_data:/var/lib/postgresql/data
       - ./docker/postgres/init-keycloak.sql:/docker-entrypoint-initdb.d/10-keycloak.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-global_exchange} -d ${DB_NAME:-global_exchange}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
-    networks: [global_exchange]
+    networks: [global_exchange_prod]
 
   mailpit:
     image: axllent/mailpit
-    container_name: global-exchange-mailpit
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8025:8025"
-    networks: [global_exchange]
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+    networks: [global_exchange_prod]
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.7.2
-    container_name: global-exchange-keycloak
     restart: unless-stopped
-    command: start-dev --import-realm
+    command: start --import-realm --http-enabled=true
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin_dev}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:?KEYCLOAK_ADMIN es obligatorio}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD es obligatorio}
       KC_DB: postgres
       KC_DB_URL_HOST: postgres
       KC_DB_URL_PORT: 5432
       KC_DB_URL_DATABASE: keycloak
-      KC_DB_USERNAME: ${DB_USER:-global_exchange}
-      KC_DB_PASSWORD: ${DB_PASSWORD:-global_exchange_dev}
+      KC_DB_USERNAME: ${DB_USER:?DB_USER es obligatorio}
+      KC_DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatorio}
       KC_HEALTH_ENABLED: "true"
-      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:?KEYCLOAK_PUBLIC_URL es obligatorio}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     ports:
       - "127.0.0.1:${KEYCLOAK_PORT:-8080}:8080"
@@ -58,11 +55,10 @@ services:
       timeout: 5s
       retries: 15
       start_period: 30s
-    networks: [global_exchange]
+    networks: [global_exchange_prod]
 
   keycloak-config:
     image: quay.io/keycloak/keycloak:26.7.2
-    container_name: global-exchange-keycloak-config
     restart: "no"
     entrypoint:
       - /bin/sh
@@ -71,43 +67,60 @@ services:
     environment:
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-global-exchange}
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin_dev}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:?KEYCLOAK_ADMIN es obligatorio}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD es obligatorio}
       KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-global-exchange-admin-api}
-      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-global-exchange-admin-dev-secret}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:?KEYCLOAK_ADMIN_CLIENT_SECRET es obligatorio}
     volumes:
       - ./docker/keycloak/configure-admin-client.sh:/config/configure-admin-client.sh:ro
     depends_on:
       keycloak:
         condition: service_healthy
-    networks: [global_exchange]
+    networks: [global_exchange_prod]
 
   web:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: global-exchange-web
     restart: unless-stopped
+    command:
+      - gunicorn
+      - config.wsgi:application
+      - --bind=0.0.0.0:8000
+      - --workers=2
+      - --timeout=60
+      - --access-logfile=-
+      - --error-logfile=-
     environment:
-      DB_NAME: ${DB_NAME:-global_exchange}
-      DB_USER: ${DB_USER:-global_exchange}
-      DB_PASSWORD: ${DB_PASSWORD:-global_exchange_dev}
+      HOME: /tmp
+      DJANGO_ENVIRONMENT: production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY es obligatorio}
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?DJANGO_ALLOWED_HOSTS es obligatorio}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+      DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-false}
+      DJANGO_SECURE_HSTS_SECONDS: ${DJANGO_SECURE_HSTS_SECONDS:-0}
+      DJANGO_COLLECTSTATIC: "true"
+      EMAIL_HOST: mailpit
+      EMAIL_PORT: 1025
+      EMAIL_USE_TLS: "false"
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@globalexchange.local}
+      DB_NAME: ${DB_NAME:?DB_NAME es obligatorio}
+      DB_USER: ${DB_USER:?DB_USER es obligatorio}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatorio}
       DB_HOST: postgres
       DB_PORT: 5432
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-dev-only-change-me}
-      DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
-      KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+      KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:?KEYCLOAK_PUBLIC_URL es obligatorio}
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-global-exchange}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-global-exchange-web}
       KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-global-exchange-admin-api}
-      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-global-exchange-admin-dev-secret}
-      KEYCLOAK_EXPECTED_ISSUER: ${KEYCLOAK_EXPECTED_ISSUER:-http://localhost:8080/realms/global-exchange}
-      BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-http://localhost:8000}
-      OIDC_CALLBACK_URL: ${OIDC_CALLBACK_URL:-http://localhost:8000/callback/}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:?KEYCLOAK_ADMIN_CLIENT_SECRET es obligatorio}
+      KEYCLOAK_EXPECTED_ISSUER: ${KEYCLOAK_EXPECTED_ISSUER:?KEYCLOAK_EXPECTED_ISSUER es obligatorio}
+      BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:?BACKEND_PUBLIC_URL es obligatorio}
+      OIDC_CALLBACK_URL: ${OIDC_CALLBACK_URL:?OIDC_CALLBACK_URL es obligatorio}
       OIDC_FLOW_MAX_AGE_SECONDS: ${OIDC_FLOW_MAX_AGE_SECONDS:-600}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       OIDC_LOGIN_SUCCESS_URL: ${OIDC_LOGIN_SUCCESS_URL:-}
       OIDC_REGISTRATION_SUCCESS_URL: ${OIDC_REGISTRATION_SUCCESS_URL:-}
       OIDC_ERROR_URL: ${OIDC_ERROR_URL:-}
@@ -117,8 +130,6 @@ services:
       CSRF_COOKIE_SECURE: ${CSRF_COOKIE_SECURE:-false}
     ports:
       - "127.0.0.1:${DJANGO_PORT:-8000}:8000"
-    volumes:
-      - .:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,11 +143,11 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
-    networks: [global_exchange]
+    networks: [global_exchange_prod]
 
 volumes:
-  postgres_data:
+  postgres_prod_data:
 
 networks:
-  global_exchange:
+  global_exchange_prod:
     driver: bridge
