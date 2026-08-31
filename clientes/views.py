@@ -1,18 +1,43 @@
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
+
 from usuarios.keycloak import KeycloakError, admin_request
 from usuarios.decorators import requiere_roles_web
 
 from .forms import AsignacionUsuarioClienteForm, ClienteForm, SegmentacionClienteForm
 from .models import Cliente, UsuarioCliente
 
+
+def _keycloak_user_id(request):
+    """Obtiene la identidad externa o rechaza una sesión web inconsistente."""
+
+    user_id = request.session.get("kc_user", {}).get("sub")
+    if not user_id:
+        raise PermissionDenied("No se encontró una identidad Keycloak válida.")
+    return user_id
+
+
+def _clientes_asignados_a(request, queryset=None):
+    """Limita un queryset a las asociaciones activas del usuario autenticado."""
+
+    queryset = queryset if queryset is not None else Cliente.objects.all()
+    return queryset.filter(
+        usuarios_asignados__keycloak_user_id=_keycloak_user_id(request),
+        usuarios_asignados__activo=True,
+    )
+
+
 @requiere_roles_web("ADMINISTRADOR", "CAJERO", "ANALISTA_CAMBIARIO", "USUARIO")
+@require_GET
 def inicio_clientes(request):
     """Muestra la pantalla principal del módulo de clientes."""
     return render(request, "clientes/inicio.html")
 
 
 @requiere_roles_web("ADMINISTRADOR")
+@require_http_methods(["GET", "POST"])
 def registrar_cliente(request):
     """Permite registrar un nuevo cliente en el sistema."""
 
@@ -32,20 +57,19 @@ def registrar_cliente(request):
         "clientes/registrar.html",
         {"form": form}
     )
+
+
 @requiere_roles_web("ADMINISTRADOR", "CAJERO", "ANALISTA_CAMBIARIO", "USUARIO")
+@require_GET
 def consultar_clientes(request):
     """Muestra y permite buscar los clientes registrados."""
 
     busqueda = request.GET.get("buscar", "")
 
     clientes = Cliente.objects.all()
-    profile = request.session.get("kc_user", {})
     roles = set(request.session.get("roles", []))
-    if profile.get("sub") and "ADMINISTRADOR" not in roles:
-        clientes = clientes.filter(
-            usuarios_asignados__keycloak_user_id=profile["sub"],
-            usuarios_asignados__activo=True,
-        )
+    if "ADMINISTRADOR" not in roles:
+        clientes = _clientes_asignados_a(request, clientes)
 
     if busqueda:
         clientes = clientes.filter(
@@ -60,18 +84,14 @@ def consultar_clientes(request):
             "busqueda": busqueda,
         }
     )
+
+
 @requiere_roles_web("ADMINISTRADOR")
+@require_http_methods(["GET", "POST"])
 def editar_cliente(request, cliente_id):
     """Permite modificar los datos de un cliente registrado."""
 
-    cliente = Cliente.objects.filter(id=cliente_id).first()
-
-    if cliente is None:
-        return render(
-            request,
-            "clientes/editar.html",
-            {"cliente_no_encontrado": True}
-        )
+    cliente = get_object_or_404(Cliente, id=cliente_id)
 
     if request.method == "POST":
         form = ClienteForm(request.POST, instance=cliente)
@@ -92,18 +112,14 @@ def editar_cliente(request, cliente_id):
             "cliente": cliente,
         }
     )
+
+
 @requiere_roles_web("ADMINISTRADOR")
+@require_http_methods(["GET", "POST"])
 def dar_de_baja_cliente(request, cliente_id):
     """Permite dar de baja lógicamente a un cliente."""
 
-    cliente = Cliente.objects.filter(id=cliente_id).first()
-
-    if cliente is None:
-        return render(
-            request,
-            "clientes/baja.html",
-            {"cliente_no_encontrado": True}
-        )
+    cliente = get_object_or_404(Cliente, id=cliente_id)
 
     if request.method == "POST":
         cliente.dar_de_baja()
@@ -117,18 +133,18 @@ def dar_de_baja_cliente(request, cliente_id):
         "clientes/baja.html",
         {"cliente": cliente}
     )
+
+
 @requiere_roles_web("ADMINISTRADOR", "ANALISTA_CAMBIARIO")
+@require_http_methods(["GET", "POST"])
 def segmentar_cliente(request, cliente_id):
     """Permite asignar o modificar la categoría de un cliente."""
 
-    cliente = Cliente.objects.filter(id=cliente_id).first()
-
-    if cliente is None:
-        return render(
-            request,
-            "clientes/segmentar.html",
-            {"cliente_no_encontrado": True}
-        )
+    roles = set(request.session.get("roles", []))
+    clientes_permitidos = Cliente.objects.all()
+    if "ADMINISTRADOR" not in roles:
+        clientes_permitidos = _clientes_asignados_a(request, clientes_permitidos)
+    cliente = get_object_or_404(clientes_permitidos, id=cliente_id)
 
     if request.method == "POST":
         form = SegmentacionClienteForm(
@@ -155,40 +171,39 @@ def segmentar_cliente(request, cliente_id):
 
 
 @requiere_roles_web("ADMINISTRADOR", "CAJERO", "ANALISTA_CAMBIARIO", "USUARIO")
+@require_POST
 def seleccionar_cliente(request, cliente_id):
     """Define el cliente activo utilizado como contexto de trabajo."""
 
-    if request.method == "POST":
-        cliente = get_object_or_404(Cliente, id=cliente_id, estado="ACTIVO")
-        profile = request.session.get("kc_user", {})
-        roles = set(request.session.get("roles", []))
-        if profile.get("sub") and "ADMINISTRADOR" not in roles:
-            get_object_or_404(
-                UsuarioCliente,
-                cliente=cliente,
-                keycloak_user_id=profile["sub"],
-                activo=True,
-            )
-        request.session["selected_client"] = {
-            "id": cliente.id,
-            "name": cliente.nombre_razon_social,
-        }
-        messages.success(request, f"Ahora estás trabajando con {cliente.nombre_razon_social}.")
-        return redirect("usuarios:dashboard")
-    return redirect("consultar_clientes")
+    cliente = get_object_or_404(Cliente, id=cliente_id, estado="ACTIVO")
+    roles = set(request.session.get("roles", []))
+    if "ADMINISTRADOR" not in roles:
+        get_object_or_404(
+            UsuarioCliente,
+            cliente=cliente,
+            keycloak_user_id=_keycloak_user_id(request),
+            activo=True,
+        )
+    request.session["selected_client"] = {
+        "id": cliente.id,
+        "name": cliente.nombre_razon_social,
+    }
+    messages.success(request, f"Ahora estás trabajando con {cliente.nombre_razon_social}.")
+    return redirect("usuarios:dashboard")
 
 
 @requiere_roles_web("ADMINISTRADOR", "CAJERO", "ANALISTA_CAMBIARIO", "USUARIO")
+@require_POST
 def deseleccionar_cliente(request):
     """Elimina el contexto de cliente sin modificar el registro del cliente."""
 
-    if request.method == "POST":
-        request.session.pop("selected_client", None)
-        messages.success(request, "Ya no hay un cliente seleccionado.")
+    request.session.pop("selected_client", None)
+    messages.success(request, "Ya no hay un cliente seleccionado.")
     return redirect("consultar_clientes")
 
 
 @requiere_roles_web("ADMINISTRADOR")
+@require_http_methods(["GET", "POST"])
 def asignaciones_cliente(request, cliente_id):
     """Administra las identidades Keycloak autorizadas para un cliente."""
 
@@ -242,17 +257,17 @@ def asignaciones_cliente(request, cliente_id):
 
 
 @requiere_roles_web("ADMINISTRADOR")
+@require_POST
 def quitar_asignacion_cliente(request, cliente_id, asignacion_id):
-    if request.method == "POST":
-        asignacion = get_object_or_404(
-            UsuarioCliente,
-            id=asignacion_id,
-            cliente_id=cliente_id,
-        )
-        if request.session.get("selected_client", {}).get("id") == cliente_id:
-            current_user = request.session.get("kc_user", {}).get("sub")
-            if current_user == asignacion.keycloak_user_id:
-                request.session.pop("selected_client", None)
-        asignacion.delete()
-        messages.success(request, "Asignación eliminada.")
+    asignacion = get_object_or_404(
+        UsuarioCliente,
+        id=asignacion_id,
+        cliente_id=cliente_id,
+    )
+    if request.session.get("selected_client", {}).get("id") == cliente_id:
+        current_user = request.session.get("kc_user", {}).get("sub")
+        if current_user == asignacion.keycloak_user_id:
+            request.session.pop("selected_client", None)
+    asignacion.delete()
+    messages.success(request, "Asignación eliminada.")
     return redirect("asignaciones_cliente", cliente_id=cliente_id)
