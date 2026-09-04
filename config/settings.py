@@ -136,6 +136,7 @@ INSTALLED_APPS = [
     "clientes",
     "monedas",
     "metodos_pago",
+    "tasas",
 ]
 
 MIDDLEWARE = [
